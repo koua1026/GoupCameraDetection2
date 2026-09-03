@@ -1,0 +1,1318 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>GUDMS-GoUpDiscordMessagingSystem</title>
+<style>
+/* ===== 全スタイル（前回と同じ） ===== */
+* { box-sizing: border-box; }
+body { margin: 0; padding: 18px; font-family: sans-serif; background: #0f172a; color: #f8fafc; min-height: 100vh; }
+.app { width: min(1100px, 100%); margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 12px 18px; }
+.panel { border: 1px solid rgba(255,255,255,0.15); background: #1e293b; border-radius: 18px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); overflow: hidden; }
+.top-left { grid-column: 1; border-radius: 10px; padding: 6px; display: flex; }
+.start-buttons { width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; }
+.top-title { grid-column: 2; border-radius: 10px; padding: 12px 18px; display: flex; align-items: center; justify-content: center; font-size: clamp(16px, 2.2vw, 24px); font-weight: 800; }
+.camera { grid-column: 1; min-height: 240px; background: #000; position: relative; display: flex; align-items: center; justify-content: center; border-radius: 18px; }
+video { width: 100%; height: 100%; object-fit: contain; }
+.no-camera { position: absolute; inset: 0; display: grid; place-items: center; color: #94a3b8; padding: 25px; pointer-events: none; font-size: 14px; }
+.camera-switch-btn { position: absolute; bottom: 12px; right: 12px; z-index: 10; background: rgba(15, 23, 42, 0.75); border: 1px solid rgba(255, 255, 255, 0.3); backdrop-filter: blur(4px); border-radius: 50%; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; font-size: 20px; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.4); transition: transform 0.15s, background 0.15s; }
+.camera-switch-btn:hover { transform: scale(1.1); background: rgba(56, 189, 248, 0.8); }
+.status { grid-column: 1; padding: 20px; }
+.status-main { font-size: 16px; font-weight: 800; padding: 10px 14px; border: 1px solid rgba(255,255,255,0.2); border-radius: 10px; margin-bottom: 12px; background: rgba(255,255,255,0.05); color: #38bdf8; }
+.freq { font-size: clamp(34px, 4.5vw, 50px); font-weight: 900; line-height: 1; margin: 12px 0; }
+.freq span { color: #38bdf8; }
+.meter { height: 10px; background: rgba(255,255,255,0.1); border-radius: 99px; overflow: hidden; margin-top: 8px; }
+.meter>div { height: 100%; width: 0%; background: #38bdf8; transition: width .08s linear; }
+.gallery-panel { grid-column: 1; padding: 18px; display: flex; flex-direction: column; min-height: 220px; }
+.gallery-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 10px; flex-wrap: wrap; }
+.gallery-grid { flex: 1; min-height: 120px; max-height: 200px; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 10px; align-content: start; background: #020617; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 10px; }
+.gallery-item { position: relative; aspect-ratio: 4/3; border-radius: 6px; overflow: hidden; cursor: pointer; border: 1px solid rgba(255,255,255,0.2); background: #000; transition: transform 0.15s; }
+.gallery-item:hover { transform: scale(1.03); border-color: #38bdf8; }
+.gallery-item img { width: 100%; height: 100%; object-fit: cover; }
+.gallery-item-tag { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(15,23,42,0.85); color: #38bdf8; font-size: 10px; padding: 2px 4px; text-align: center; text-overflow: ellipsis; white-space: nowrap; font-weight: bold; }
+.settings { grid-column: 2; grid-row: 2 / span 4; padding: 20px; overflow: auto; }
+.logs { grid-column: 1 / 3; padding: 18px; overflow: hidden; display: flex; flex-direction: column; }
+.logs-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.log-filter-btn { font-size: 11px; padding: 3px 8px; border-radius: 4px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.15); color: #94a3b8; cursor: pointer; }
+.log-filter-btn.active { background: #38bdf8; color: #0f172a; font-weight: bold; }
+.logs-box { height: 180px; max-height: 180px; overflow-y: auto; background: #020617; border-radius: 8px; padding: 10px; font-family: monospace; font-size: 12px; white-space: pre-wrap; border: 1px solid rgba(255,255,255,0.1); }
+.log-line { margin-bottom: 4px; }
+.log-time { color: #94a3b8; margin-right: 6px; }
+.log-type { display: inline-block; padding: 1px 4px; border-radius: 3px; font-size: 10px; font-weight: bold; margin-right: 6px; }
+.log-type-ERROR { background: rgba(239,68,68,0.2); color: #f87171; border: 1px solid #ef4444; }
+.log-type-DETECT { background: rgba(56,189,248,0.2); color: #38bdf8; border: 1px solid #38bdf8; }
+.log-type-SEQ { background: rgba(245,158,11,0.2); color: #fbbf24; border: 1px solid #f59e0b; }
+.log-type-PHOTO { background: rgba(16,185,129,0.2); color: #34d399; border: 1px solid #10b981; }
+.log-type-DISCORD { background: rgba(168,85,247,0.2); color: #c084fc; border: 1px solid #a855f7; }
+.log-type-SYSTEM { background: rgba(148,163,184,0.2); color: #cbd5e1; border: 1px solid #94a3b8; }
+.log-type-TEST { background: rgba(245,158,11,0.3); color: #fbbf24; border: 1px solid #f59e0b; }
+h2 { margin: 0 0 14px; font-size: 18px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 6px; }
+h3 { margin: 0; font-size: 14px; color: #94a3b8; }
+.section-header-wrap { display: flex; align-items: center; justify-content: space-between; margin: 16px 0 8px; }
+.toggle-switch-container { display: flex; align-items: center; gap: 8px; }
+.toggle-switch-label { font-size: 12px; color: #94a3b8; }
+.toggle-switch { position: relative; display: inline-block; width: 44px; height: 24px; }
+.toggle-switch input { opacity: 0; width: 0; height: 0; }
+.slider { position: absolute; cursor: pointer; inset: 0; background-color: #334155; transition: .2s; border-radius: 24px; border: 1px solid rgba(255,255,255,0.2); }
+.slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 3px; bottom: 3px; background-color: #fff; transition: .2s; border-radius: 50%; }
+input:checked + .slider { background-color: #38bdf8; }
+input:checked + .slider:before { transform: translateX(20px); }
+.range-list, .seq-list { display: grid; gap: 8px; }
+.range-row, .seq-row { display: grid; gap: 6px; padding: 8px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; align-items: end; }
+.range-row { grid-template-columns: 1fr 70px 70px auto auto; }
+.seq-row { grid-template-columns: 110px 1fr 1fr 65px auto; }
+label { display: grid; gap: 4px; font-size: 11px; font-weight: 700; color: #94a3b8; }
+input[type=text], input[type=number], input[type=url], input[type=password], select { width: 100%; padding: 8px; border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; background: #0f172a; color: #fff; font: inherit; font-size: 13px; }
+input:disabled { background: #1e293b; color: #cbd5e1; border-color: rgba(255,255,255,0.1); }
+button { font: inherit; font-size: 13px; border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; background: #334155; color: #fff; padding: 7px 12px; cursor: pointer; font-weight: 700; }
+button:hover { background: #475569; }
+button.start-btn { background: #0284c7; border-color: #38bdf8; }
+button.start-btn:hover { background: #0369a1; }
+button.danger { border-color: #ef4444; color: #ef4444; background: transparent; }
+button.danger:hover { background: rgba(239,68,68,0.2); }
+button.exec-btn { background: #8b5cf6; color: #fff; border: none; }
+button.exec-btn:hover { background: #7c3aed; }
+button.test-btn { background: #f59e0b; color: #0f172a; border: none; }
+button.test-btn:hover { background: #d97706; }
+button:disabled { opacity: 0.3; cursor: not-allowed; }
+.grid-settings { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.setting-card { border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.15); border-radius: 8px; padding: 8px; }
+.wide { grid-column: 1/-1; }
+.inline { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.muted { color: #94a3b8; font-size: 11px; }
+.seq-status-box { margin-top: 6px; padding: 6px; background: rgba(0,0,0,0.2); border-radius: 6px; font-size: 12px; }
+.modal-overlay { position: fixed; inset: 0; background: rgba(15,23,42,0.7); backdrop-filter: blur(8px); display: grid; place-items: center; z-index: 9999; padding: 16px; }
+.modal-content { background: #1e293b; border: 1px solid rgba(255,255,255,0.2); border-radius: 16px; padding: 24px; width: min(500px, 100%); }
+.modal-content h3 { margin: 0 0 16px; font-size: 18px; color: #fff; }
+.modal-inputs { display: grid; gap: 12px; margin-bottom: 20px; }
+.modal-buttons { display: flex; justify-content: flex-end; gap: 10px; }
+.image-modal-content { background: #1e293b; border: 1px solid rgba(255,255,255,0.2); border-radius: 16px; padding: 16px; max-width: min(90vw, 800px); max-height: min(90vh, 700px); display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.image-modal-content img { max-width: 100%; max-height: 70vh; object-fit: contain; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); }
+.tag-thread-config { display: grid; gap: 8px; margin-top: 4px; }
+.thread-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); flex-wrap: wrap; }
+.thread-row .tag-label { min-width: 80px; font-weight: bold; font-size: 12px; color: #94a3b8; }
+.thread-row .channel-group { display: flex; align-items: center; gap: 6px; background: rgba(0,0,0,0.2); padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05); }
+.thread-row .channel-group .ch-label { font-size: 11px; font-weight: bold; color: #38bdf8; min-width: 50px; }
+.thread-row select { min-width: 80px; padding: 4px 6px; font-size: 12px; background: #0f172a; color: #fff; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; }
+.thread-row .status-badge { font-size: 10px; padding: 2px 8px; border-radius: 10px; }
+.thread-row .status-badge.active { background: rgba(16,185,129,0.2); color: #34d399; border: 1px solid #10b981; }
+.thread-row .status-badge.inactive { background: rgba(239,68,68,0.2); color: #f87171; border: 1px solid #ef4444; }
+@media(max-width: 720px) {
+  body { padding: 8px; }
+  .app { grid-template-columns: 1fr; }
+  .top-left, .top-title, .camera, .status, .gallery-panel, .settings, .logs { grid-column: 1; }
+  .settings { grid-row: auto; }
+  .range-row, .seq-row { grid-template-columns: 1fr 1fr; }
+  .range-row button, .seq-row button { grid-column: 1/-1; }
+  .grid-settings { grid-template-columns: 1fr; }
+  .freq { font-size: 32px; }
+  .thread-row { flex-direction: column; align-items: stretch; }
+  .thread-row .channel-group { justify-content: space-between; }
+}
+#hz2-root { position: fixed; inset: 0; z-index: 99999; background-color: #0d1117; color: #c9d1d9; font-family: monospace; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; user-select: none; }
+#hz2-root #info-container { position: absolute; top: 20px; left: 30px; z-index: 10; display: flex; align-items: center; gap: 15px; }
+#hz2-root .hz-display { font-size: 3.5rem; font-weight: bold; color: #58a6ff; transition: color 0.2s; }
+#hz2-root .hz-display.highlight { color: #ff5555; }
+#hz2-root .hz-unit { font-size: 1.5rem; color: #8b949e; }
+#hz2-root .pause-badge { display: none; background: #f59e0b; color: #000; font-weight: bold; font-size: 0.9rem; padding: 2px 8px; border-radius: 4px; margin-left: 10px; }
+#hz2-root .pause-badge.active { display: inline-block; }
+#hz2-root #log-container { position: absolute; top: 20px; right: 30px; width: 280px; z-index: 100; background: rgba(22, 27, 34, 0.92); backdrop-filter: blur(8px); border: 1px solid #30363d; border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; }
+#hz2-root .log-header { font-size: 0.85rem; font-weight: bold; color: #8b949e; background: rgba(13, 17, 23, 0.8); padding: 8px 12px; border-bottom: 1px solid #30363d; display: flex; justify-content: space-between; align-items: center; cursor: move; }
+#hz2-root .log-header-title { pointer-events: none; }
+#hz2-root .log-controls { display: flex; align-items: center; gap: 8px; }
+#hz2-root .action-btn { background: transparent; border: none; color: #58a6ff; cursor: pointer; font-size: 0.75rem; padding: 2px 4px; border-radius: 4px; transition: background 0.2s; }
+#hz2-root .action-btn:hover { background: rgba(88, 166, 255, 0.15); }
+#hz2-root .log-body { padding: 10px; max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; }
+#hz2-root #log-container.minimized .log-body { display: none; }
+#hz2-root #log-container.minimized { width: 200px; }
+#hz2-root #log-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 0.8rem; }
+#hz2-root #log-list li { color: #ff79c6; background: rgba(255, 85, 85, 0.1); padding: 4px 8px; border-radius: 4px; border-left: 3px solid #ff5555; }
+#hz2-root #controls-container { position: absolute; bottom: 25px; left: 50%; transform: translateX(-50%); z-index: 10; display: flex; align-items: center; gap: 20px; background: rgba(22, 27, 34, 0.9); backdrop-filter: blur(8px); padding: 12px 24px; border-radius: 12px; border: 1px solid #30363d; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4); }
+#hz2-root .control-group { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+#hz2-root .control-group label { font-size: 0.85rem; color: #8b949e; display: flex; justify-content: space-between; width: 100%; }
+#hz2-root .control-group span { color: #58a6ff; font-weight: bold; }
+#hz2-root input[type="range"] { width: 140px; cursor: pointer; accent-color: #58a6ff; }
+#hz2-root #tooltip { position: absolute; display: none; padding: 6px 12px; background: rgba(13, 17, 23, 0.95); border: 1px solid #58a6ff; border-radius: 6px; color: #f0f6fc; font-size: 0.85rem; pointer-events: none; z-index: 20; box-shadow: 0 2px 10px rgba(0,0,0,0.5); }
+#hz2-root canvas { width: 100vw; height: 100vh; display: block; cursor: crosshair; }
+#hz2-root .back-btn { background: #334155; color: #fff; border: 1px solid rgba(255,255,255,0.2); padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: bold; }
+#hz2-root .back-btn:hover { background: #475569; }
+#hz2-root .pause-hint { font-size: 0.8rem; color: #8b949e; margin-left: 8px; }
+.channel-toggle-row { display: flex; gap: 20px; flex-wrap: wrap; padding: 4px 0; }
+.channel-toggle-item { display: flex; align-items: center; gap: 8px; }
+.channel-toggle-item label { display: flex; align-items: center; gap: 5px; font-weight: bold; color: #fff; cursor: pointer; }
+.channel-toggle-item input[type="checkbox"] { width: auto; }
+
+/* パスワード認証画面 */
+#auth-overlay { position: fixed; inset: 0; z-index: 99999; background: rgba(15,23,42,0.95); backdrop-filter: blur(10px); display: flex; align-items: center; justify-content: center; }
+#auth-box { background: #1e293b; border: 1px solid rgba(255,255,255,0.2); border-radius: 20px; padding: 40px; width: min(420px, 90%); box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
+#auth-box h1 { font-size: 24px; color: #38bdf8; margin: 0 0 8px 0; text-align: center; }
+#auth-box .subtitle { color: #94a3b8; text-align: center; margin-bottom: 24px; font-size: 14px; }
+#auth-box label { font-size: 13px; color: #94a3b8; margin-bottom: 4px; display: block; }
+#auth-box input[type="password"] { width: 100%; padding: 12px 16px; border: 1px solid rgba(255,255,255,0.15); border-radius: 10px; background: #0f172a; color: #fff; font-size: 16px; margin-bottom: 16px; }
+#auth-box input[type="password"]:focus { outline: none; border-color: #38bdf8; }
+#auth-box .auth-error { color: #ef4444; font-size: 13px; text-align: center; min-height: 20px; margin-bottom: 8px; }
+#auth-box .auth-btn { width: 100%; padding: 12px; background: #38bdf8; color: #0f172a; border: none; border-radius: 10px; font-size: 16px; font-weight: bold; cursor: pointer; transition: background 0.2s; }
+#auth-box .auth-btn:hover { background: #0ea5e9; }
+
+/* テストモーダル */
+.test-channel-group { display: flex; gap: 12px; flex-wrap: wrap; }
+.test-channel-group label { display: flex; align-items: center; gap: 6px; font-weight: normal; color: #fff; cursor: pointer; }
+.test-channel-group input[type="checkbox"] { width: auto; }
+.test-tag-group { display: flex; gap: 8px; flex-wrap: wrap; }
+.test-tag-group label { display: flex; align-items: center; gap: 6px; font-weight: normal; color: #fff; cursor: pointer; }
+.test-tag-group input[type="checkbox"] { width: auto; }
+</style>
+</head>
+<body>
+
+<!-- パスワード認証オーバーレイ -->
+<div id="auth-overlay">
+  <div id="auth-box">
+    <h1>🔐 認証が必要です</h1>
+    <p class="subtitle">このシステムにアクセスするにはパスワードを入力してください</p>
+    <label>パスワード</label>
+    <input type="password" id="auth-password" placeholder="パスワードを入力" onkeydown="if(event.key==='Enter') authenticate()">
+    <div id="auth-error" class="auth-error"></div>
+    <button class="auth-btn" onclick="authenticate()">認証する</button>
+  </div>
+</div>
+
+<!-- テスト送信モーダル -->
+<div id="testModal" class="modal-overlay" style="display: none;">
+  <div class="modal-content">
+    <h3>🧪 テスト送信</h3>
+    <div class="modal-inputs">
+      <div>
+        <label style="margin-bottom:6px;">送信先チャンネル（複数選択可）</label>
+        <div class="test-channel-group">
+          <label><input type="checkbox" class="test-channel" value="koua" checked> Koua</label>
+          <label><input type="checkbox" class="test-channel" value="fumiya" checked> Fumiya</label>
+        </div>
+      </div>
+      <div>
+        <label style="margin-bottom:6px;">テストタグ（複数選択可）</label>
+        <div class="test-tag-group" id="testTagGroup"></div>
+      </div>
+      <div class="muted" style="font-size:12px; color:#94a3b8;">
+        ※ 選択したチャンネル×タグの全組み合わせでテスト送信します<br>
+        ※ 送信画像は黒色（ダミー画像）です
+      </div>
+    </div>
+    <div class="modal-buttons">
+      <button id="testModalCancelBtn" class="danger">キャンセル</button>
+      <button id="testModalSubmitBtn" class="test-btn">🚀 テスト送信実行</button>
+    </div>
+  </div>
+</div>
+
+<div class="app" id="mainApp" style="display:none;">
+  <section class="panel top-left">
+    <div class="start-buttons">
+      <button id="startBtn" class="start-btn">開始</button>
+      <button id="stopBtn" disabled>停止</button>
+      <button id="execHzBtn" class="exec-btn" title="hz_2.htmlを実行">Hz検査</button>
+      <button id="testSendBtn" class="test-btn" title="テスト送信">🧪 テスト送信</button>
+    </div>
+  </section>
+  <section class="panel top-title">"DiscordMessaging"</section>
+  <section class="panel camera"><video id="video" autoplay playsinline muted></video><div id="noCamera" class="no-camera">カメラ準備中...</div><button id="switchCamBtn" class="camera-switch-btn" title="カメラ切り替え" style="display: none;">↺</button></section>
+  <section class="panel status">
+    <h2>ステータス</h2><div id="statusMain" class="status-main">待機中</div><div class="freq"><span id="frequency">0</span> Hz</div><div class="muted">音量: <span id="volume" style="color:#fff;">0</span> dB</div>
+    <div class="meter"><div id="volumeBar"></div></div><div style="margin-top:14px"><div class="muted" style="font-weight:700; margin-bottom:4px">シーケンス進行状態:</div><div id="seqStatusList" class="seq-status-box">待機中のシーケンスなし</div></div>
+    <div class="muted" style="margin-top:10px">最後に検出: <span id="lastDetected" style="color:#fff;">なし</span></div><div class="muted" style="margin-top:6px">次の撮影: <span id="nextCapture" style="color:#f59e0b;">待機中</span></div>
+  </section>
+  <section class="panel gallery-panel">
+    <div class="gallery-header"><h2 style="margin:0; border:none; padding:0;">撮影画像ギャラリー</h2><select id="galleryFilter"><option value="ALL">すべてのタグ</option></select></div>
+    <div id="galleryGrid" class="gallery-grid"><div class="muted" style="grid-column: 1/-1; text-align: center; padding: 20px;">撮影された画像はありません</div></div>
+  </section>
+  <section class="panel settings">
+    <h2>設定</h2>
+    <div class="section-header-wrap"><h3>1. 音域登録</h3><div class="toggle-switch-container"><span class="toggle-switch-label" id="rangeToggleStatusText">表示</span><label class="toggle-switch"><input type="checkbox" id="rangeToggleBtn" checked><span class="slider"></span></label></div></div>
+    <div id="rangeSectionBody"><div id="rangeList" class="range-list"></div><div style="margin-top:8px" class="inline"><button id="addRangeBtn">＋ 音域を追加</button></div></div>
+    <div class="section-header-wrap"><h3>2. シーケンス条件設定</h3><div class="toggle-switch-container"><span class="toggle-switch-label" id="seqToggleStatusText">表示</span><label class="toggle-switch"><input type="checkbox" id="seqToggleBtn" checked><span class="slider"></span></label></div></div>
+    <div id="seqSectionBody">
+      <div class="setting-card wide">
+        <div style="margin-bottom:8px; display:flex; align-items:center; gap:8px;"><input type="checkbox" id="seqEnable" checked style="width:auto;"><label for="seqEnable" style="font-size:13px; color:#fff; cursor:pointer;">シーケンス検出モードを有効化</label></div>
+        <div id="seqList" class="seq-list"></div><div style="margin-top:10px" class="inline"><button id="addSeqBtn">＋ シーケンス条件を追加</button><button id="addTagBtn">＋ タグを追加</button></div>
+        <div class="muted" style="margin-top:6px">※無効化時は、登録音域が鳴った時点で直接撮影します。</div>
+      </div>
+    </div>
+    <div class="section-header-wrap"><h3>3. 接続・パラメーター設定</h3><div class="toggle-switch-container"><span class="toggle-switch-label" id="paramsToggleStatusText">表示</span><label class="toggle-switch"><input type="checkbox" id="paramsToggleBtn" checked><span class="slider"></span></label></div></div>
+    <div id="paramsSectionBody">
+      <div class="grid-settings">
+        <div class="setting-card wide"><label>デフォルト Webhook URL<input id="webhookUrl" type="url" value="" placeholder="https://discord.com/api/webhooks/..." autocomplete="off"></label></div>
+        
+        <div class="setting-card wide">
+          <label style="margin-bottom:6px; font-weight:bold;">Discord送信先チャンネル（全体ON/OFF）</label>
+          <div class="channel-toggle-row">
+            <div class="channel-toggle-item">
+              <label><input type="checkbox" id="kouaSend" checked> Koua</label>
+              <span style="font-size:11px; color:#94a3b8;">(スレッド 1,2,3)</span>
+            </div>
+            <div class="channel-toggle-item">
+              <label><input type="checkbox" id="fumiyaSend" checked> Fumiya</label>
+              <span style="font-size:11px; color:#94a3b8;">(スレッド 4,5,6)</span>
+            </div>
+          </div>
+          <div class="muted" style="margin-top:4px;">※チェックしたチャンネルに送信されます。各タグの設定でスレッド番号を個別に指定できます。</div>
+        </div>
+
+        <div class="setting-card wide">
+          <label style="margin-bottom:6px;">タグ別 スレッド割り当て設定</label>
+          <div id="tagThreadList" class="tag-thread-config"></div>
+          <div class="muted" style="margin-top:4px;">
+            ※Koua: スレッド1,2,3 / Fumiya: スレッド4,5,6 から選択<br>
+            例: forbidden → Koua:1, Fumiya:4 / ascended → Koua:2, Fumiya:5 / divine → Koua:3, Fumiya:6
+          </div>
+        </div>
+
+        <div class="setting-card wide">
+          <label style="margin-bottom:6px;">タグ別 Discord 埋め込みカラー</label>
+          <div id="tagColorList" style="display:grid; gap:6px;"></div>
+        </div>
+        <div class="setting-card"><label>音量しきい値 (dB)<input id="volumeThreshold" type="number" value="35" min="0" max="100" step="1"></label></div>
+        <div class="setting-card"><label>撮影遅延 (ms)<input id="captureDelay" type="number" value="500" min="0" max="60000" step="50"></label></div>
+        <div class="setting-card wide"><label>クールダウン (ms)<input id="cooldown" type="number" value="5000" min="0" max="3600000" step="100"></label></div>
+        <div class="setting-card wide"><div class="inline"><button id="discordPauseBtn">Discord送信を一時停止</button><span id="discordState" class="muted">送信: 有効</span></div></div>
+      </div>
+    </div>
+  </section>
+  <section class="panel logs">
+    <div class="logs-header">
+      <h2 style="margin:0; border:none; padding:0;">Debug Log</h2>
+      <div class="log-filters">
+        <button class="log-filter-btn active" data-filter="ALL">すべて</button><button class="log-filter-btn" data-filter="ERROR">ERROR</button><button class="log-filter-btn" data-filter="DETECT">DETECT</button>
+        <button class="log-filter-btn" data-filter="SEQ">SEQ</button><button class="log-filter-btn" data-filter="DISCORD">DISCORD</button><button class="log-filter-btn" data-filter="SYSTEM">SYSTEM</button>
+        <button class="log-filter-btn" data-filter="TEST">TEST</button>
+      </div>
+    </div>
+    <div id="logs" class="logs-box"></div><div style="margin-top:8px" class="inline"><button id="clearLogsBtn">ログを消去</button></div>
+  </section>
+</div>
+<div id="rangeModal" class="modal-overlay" style="display: none;">
+  <div class="modal-content">
+    <h3 id="modalTitle">音域の追加</h3>
+    <div class="modal-inputs"><label>名前<input type="text" id="modalRangeName" placeholder="例: 音G"></label><label>Low (Hz)<input type="number" id="modalRangeLow" value="1000" min="1" max="96000"></label><label>High (Hz)<input type="number" id="modalRangeHigh" value="1050" min="1" max="96000"></label></div>
+    <div class="modal-buttons"><button id="modalCancelBtn" class="danger">キャンセル</button><button id="modalSubmitBtn" class="primary">保存</button></div>
+  </div>
+</div>
+<div id="tagModal" class="modal-overlay" style="display: none;">
+  <div class="modal-content">
+    <h3>新しいタグを追加</h3><div class="modal-inputs"><label>タグ名<input type="text" id="modalTagName" placeholder="例: 条件4"></label></div>
+    <div class="modal-buttons"><button id="tagModalCancelBtn" class="danger">キャンセル</button><button id="tagModalSubmitBtn" class="primary">追加</button></div>
+  </div>
+</div>
+<div id="imageModal" class="modal-overlay" style="display: none;">
+  <div class="image-modal-content"><img id="previewImage" src="" alt="拡大プレビュー"><div id="previewInfo" class="muted" style="text-align: center;"></div><button id="imageModalCloseBtn" class="primary">閉じる</button></div>
+</div>
+<script>
+// ============================================================
+// パスワード認証（パスワード: brainrot）
+// ============================================================
+const CORRECT_PASSWORD = "brainrot";
+
+function authenticate() {
+  const input = document.getElementById('auth-password');
+  const error = document.getElementById('auth-error');
+  if (input.value === CORRECT_PASSWORD) {
+    // 認証成功 → オーバーレイを非表示にしてメインを表示
+    document.getElementById('auth-overlay').style.display = 'none';
+    document.getElementById('mainApp').style.display = 'grid';
+    // システム起動
+    setTimeout(function() {
+      startSystem();
+    }, 100);
+  } else {
+    error.textContent = '❌ パスワードが間違っています';
+    input.value = '';
+    input.focus();
+    setTimeout(function() { error.textContent = ''; }, 3000);
+  }
+}
+
+// Enterキーで認証
+document.getElementById('auth-password').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') authenticate();
+});
+
+// ============================================================
+// メインコード（ここから）
+// ============================================================
+const DESTINATION_WEBHOOKS = {
+  koua: "https://discord.com/api/webhooks/1544588432100302899/hd7Od9KkQMKRM5DzeWWKCgwMYTyzR6TVLs0-X-01o0w3w_90fcc-TxPyNM1kkrI_eGgJ",
+  fumiya: "https://discord.com/api/webhooks/1534838115766636587/QTze72Dgr8B7P4fFFewQeauXZRrZfMAitO0kVYipKl-pWyfSXIG158KKR7mrRJ-1HD3c"
+};
+
+"use strict";
+const $ = id => document.getElementById(id);
+const escapeHtml = s => String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#039;" }[c]));
+let capturedPhotos = [], logEntries = [], activeSeqStates = [], lastTriggered = new Map(), pendingTimers = new Map();
+let currentLogFilter = "ALL", audioContext = null, analyser = null, audioSource = null, rafId = null, running = false, discordPaused = false, editingIndex = null;
+let videoDevices = [], currentVideoDeviceIndex = 0;
+let cameraStreams = [];
+
+let tags = ["forbidden", "ascended", "divine"];
+let tagColors = { forbidden: "#0064ff", ascended: "#ff9600", divine: "#64c8ff" };
+
+// タグごとのスレッド設定（Koua用とFumiya用を個別に設定）
+let tagThreads = {
+  forbidden: { koua: "1545089976625274991", fumiya: "1545089552450846760" },
+  ascended: { koua: "1545090039468396674", fumiya: "1545089627743060138" },
+  divine: { koua: "1545090100768145499", fumiya: "1545089707824783400" }
+};
+
+let ranges = [
+  { name: "forbidden1st", low: 430, high: 450 }, { name: "forbidden2nd", low: 380, high: 400 },
+  { name: "ascended1st", low: 340, high: 365 }, { name: "ascended2nd", low: 650, high: 750 },
+  { name: "divine1st", low: 2120, high: 2160 }, { name: "divine2nd", low: 300, high: 500 }
+];
+let sequences = [
+  { id: "seq_1", tag: "forbidden", first: "forbidden1st", second: "forbidden2nd", windowSec: 5 },
+  { id: "seq_2", tag: "ascended", first: "ascended1st", second: "ascended2nd", windowSec: 5 },
+  { id: "seq_3", tag: "divine", first: "divine1st", second: "divine2nd", windowSec: 5 }
+];
+
+function generateUniqueId() {
+  return "id_" + Date.now().toString(36) + "_" + Math.random().toString(36).substr(2, 5);
+}
+
+function getFormattedTimestamp() {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  const hh = d.getHours();
+  const min = d.getMinutes();
+  const ss = String(d.getSeconds()).padStart(2, '0');
+  return `[${yyyy}/${mm}/${dd}:${hh}:${min}:${ss}]`;
+}
+
+function log(message, type = "INFO") {
+  const time = new Date().toLocaleTimeString("ja-JP", { hour12: false });
+  const entry = { time, type, message };
+  logEntries.push(entry);
+  if (currentLogFilter === "ALL" || currentLogFilter === type) appendLogToBox(entry);
+}
+function appendLogToBox(e) {
+  const box = $("logs");
+  if (!box) return;
+  const line = document.createElement("div");
+  line.className = "log-line";
+  line.innerHTML = `<span class="log-time">[${e.time}]</span><span class="log-type log-type-${e.type}">${escapeHtml(e.type)}</span> ${escapeHtml(e.message)}`;
+  box.appendChild(line);
+  box.scrollTop = box.scrollHeight;
+}
+function renderLogs() {
+  $("logs").innerHTML = "";
+  (currentLogFilter === "ALL" ? logEntries : logEntries.filter(e => e.type === currentLogFilter)).forEach(appendLogToBox);
+}
+window.addEventListener("error", e => {
+  const t = e.target;
+  log(t && t !== window && t.tagName ? `[404/Ref] 読み込み失敗: ${t.src || t.href}` : `[JS Error] ${e.message}`, "ERROR");
+}, true);
+window.addEventListener("unhandledrejection", e => log(`[Async Error] ${e.reason?.message || e.reason}`, "ERROR"));
+document.querySelectorAll(".log-filter-btn").forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll(".log-filter-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    currentLogFilter = btn.dataset.filter;
+    renderLogs();
+  };
+});
+$("clearLogsBtn").onclick = () => { logEntries = []; $("logs").innerHTML = ""; };
+const bindToggle = (btnId, bodyId, textId) => {
+  $(btnId).onchange = e => {
+    $(bodyId).style.display = e.target.checked ? "block" : "none";
+    $(textId).textContent = e.target.checked ? "表示" : "非表示";
+  };
+};
+bindToggle("rangeToggleBtn", "rangeSectionBody", "rangeToggleStatusText");
+bindToggle("seqToggleBtn", "seqSectionBody", "seqToggleStatusText");
+bindToggle("paramsToggleBtn", "paramsSectionBody", "paramsToggleStatusText");
+
+function renderRanges() {
+  const list = $("rangeList");
+  list.innerHTML = ranges.map((r, i) => `
+    <div class="range-row">
+      <label>名前<input type="text" value="${escapeHtml(r.name)}" disabled></label>
+      <label>Low (Hz)<input type="number" value="${r.low}" disabled></label>
+      <label>High (Hz)<input type="number" value="${r.high}" disabled></label>
+      <button class="edit-range" data-i="${i}">編集</button>
+      <button class="danger delete-range" data-i="${i}">削除</button>
+    </div>`).join("");
+  list.querySelectorAll(".edit-range").forEach(b => b.onclick = () => openRangeModal(+b.dataset.i));
+  list.querySelectorAll(".delete-range").forEach(b => b.onclick = () => {
+    const deleted = ranges.splice(+b.dataset.i, 1)[0].name;
+    sequences.forEach(s => {
+      if (s.first === deleted && ranges[0]) s.first = ranges[0].name;
+      if (s.second === deleted && ranges[0]) s.second = ranges[0].name;
+    });
+    renderRanges(); renderSequences();
+    renderTagColors();
+    renderTagThreads();
+  });
+}
+function renderSequences() {
+  const list = $("seqList");
+  const opts = arr => arr.map(v => `<option value="${escapeHtml(v.name || v)}">${escapeHtml(v.name || v)}</option>`).join("");
+  list.innerHTML = sequences.map((s) => `
+    <div class="seq-row" data-id="${s.id}">
+      <label>タグ<select data-id="${s.id}" data-k="tag">${opts(tags)}</select></label>
+      <label>1番目の音<select data-id="${s.id}" data-k="first">${opts(ranges)}</select></label>
+      <label>2番目の音<select data-id="${s.id}" data-k="second">${opts(ranges)}</select></label>
+      <label>制限時間(秒)<input type="number" data-id="${s.id}" data-k="windowSec" value="${s.windowSec}" min="1" max="60"></label>
+      <button class="danger delete-seq" data-id="${s.id}">削除</button>
+    </div>`).join("");
+  sequences.forEach((s) => {
+    const row = list.querySelector(`.seq-row[data-id="${s.id}"]`);
+    if (row) {
+      row.querySelector(`[data-k="tag"]`).value = s.tag;
+      row.querySelector(`[data-k="first"]`).value = s.first;
+      row.querySelector(`[data-k="second"]`).value = s.second;
+    }
+  });
+  list.querySelectorAll("select, input").forEach(el => el.onchange = () => {
+    const targetSeq = sequences.find(s => s.id === el.dataset.id);
+    if (targetSeq) {
+      targetSeq[el.dataset.k] = el.dataset.k === "windowSec" ? (+el.value || 1) : el.value;
+      updateSeqStatusUI();
+    }
+  });
+  list.querySelectorAll(".delete-seq").forEach(b => b.onclick = () => {
+    sequences = sequences.filter(s => s.id !== b.dataset.id);
+    resetAllSequences(); renderSequences();
+  });
+  updateSeqStatusUI(); updateGalleryFilterOptions();
+}
+
+function renderTagThreads() {
+  const list = $("tagThreadList");
+  if (!list) return;
+  
+  list.innerHTML = tags.map(tag => {
+    const kouaThread = tagThreads[tag]?.koua || "1";
+    const fumiyaThread = tagThreads[tag]?.fumiya || "4";
+    return `
+      <div class="thread-row">
+        <span class="tag-label">${escapeHtml(tag)}</span>
+        <div class="channel-group">
+          <span class="ch-label">Koua</span>
+          <select data-tag="${escapeHtml(tag)}" data-channel="koua"
+                  onchange="tagThreads['${tag.replace(/'/g, "\\'")}'].koua=this.value; log('${escapeHtml(tag)} Kouaスレッド: '+this.value, 'SYSTEM');">
+            <option value="1" ${kouaThread === "1" ? "selected" : ""}>スレッド 1</option>
+            <option value="2" ${kouaThread === "2" ? "selected" : ""}>スレッド 2</option>
+            <option value="3" ${kouaThread === "3" ? "selected" : ""}>スレッド 3</option>
+          </select>
+        </div>
+        <div class="channel-group">
+          <span class="ch-label">Fumiya</span>
+          <select data-tag="${escapeHtml(tag)}" data-channel="fumiya"
+                  onchange="tagThreads['${tag.replace(/'/g, "\\'")}'].fumiya=this.value; log('${escapeHtml(tag)} Fumiyaスレッド: '+this.value, 'SYSTEM');">
+            <option value="4" ${fumiyaThread === "4" ? "selected" : ""}>スレッド 4</option>
+            <option value="5" ${fumiyaThread === "5" ? "selected" : ""}>スレッド 5</option>
+            <option value="6" ${fumiyaThread === "6" ? "selected" : ""}>スレッド 6</option>
+          </select>
+        </div>
+        <span class="status-badge active">✅ K${kouaThread} / F${fumiyaThread}</span>
+      </div>
+    `;
+  }).join("");
+}
+
+function updateGalleryFilterOptions() {
+  const select = $("galleryFilter"), cur = select.value;
+  select.innerHTML = `<option value="ALL">すべてのタグ</option>` + tags.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join("");
+  select.value = cur;
+}
+$("galleryFilter").onchange = renderGallery;
+
+function renderGallery() {
+  const grid = $("galleryGrid"), filter = $("galleryFilter").value;
+  const list = filter === "ALL" ? capturedPhotos : capturedPhotos.filter(p => p.tag === filter);
+  if (!list.length) return grid.innerHTML = `<div class="muted" style="grid-column: 1/-1; text-align: center; padding: 20px;">表示する画像はありません</div>`;
+  grid.innerHTML = list.map((p, i) => `
+    <div class="gallery-item" data-i="${i}">
+      <img src="${p.url}">
+      <div class="gallery-item-tag">${escapeHtml(p.tag)}</div>
+    </div>`).join("");
+  grid.querySelectorAll(".gallery-item").forEach((item, idx) => {
+    item.onclick = () => {
+      const p = list[idx];
+      $("previewImage").src = p.url;
+      $("previewInfo").textContent = `[${p.tag}] ${p.timestamp} - ${p.info}`;
+      $("imageModal").style.display = "grid";
+    };
+  });
+}
+$("imageModalCloseBtn").onclick = $("imageModal").onclick = e => {
+  if (e.target === $("imageModalCloseBtn") || e.target === $("imageModal")) $("imageModal").style.display = "none";
+};
+
+function openRangeModal(index = null) {
+  editingIndex = index;
+  const isEdit = index !== null && index >= 0;
+  const item = isEdit ? ranges[index] : { name: `音${String.fromCharCode(65 + ranges.length)}`, low: 1000 + ranges.length * 100, high: 1050 + ranges.length * 100 };
+  $("modalTitle").textContent = isEdit ? "音域の編集" : "音域の追加";
+  $("modalRangeName").value = item.name;
+  $("modalRangeLow").value = item.low;
+  $("modalRangeHigh").value = item.high;
+  $("rangeModal").style.display = "grid";
+}
+$("addRangeBtn").onclick = () => openRangeModal(null);
+$("modalCancelBtn").onclick = () => $("rangeModal").style.display = "none";
+$("modalSubmitBtn").onclick = () => {
+  const name = $("modalRangeName").value.trim() || `音${ranges.length + 1}`;
+  let low = +$("modalRangeLow").value || 0, high = +$("modalRangeHigh").value || 0;
+  if (low > high) [low, high] = [high, low];
+  if (editingIndex !== null && editingIndex >= 0) {
+    const oldName = ranges[editingIndex].name;
+    ranges[editingIndex] = { name, low, high };
+    if (oldName !== name) sequences.forEach(s => { if (s.first === oldName) s.first = name; if (s.second === oldName) s.second = name; });
+  } else { ranges.push({ name, low, high }); }
+  renderRanges(); renderSequences();
+  $("rangeModal").style.display = "none";
+};
+$("addTagBtn").onclick = () => { $("modalTagName").value = `条件${tags.length + 1}`; $("tagModal").style.display = "grid"; };
+$("tagModalCancelBtn").onclick = () => $("tagModal").style.display = "none";
+$("tagModalSubmitBtn").onclick = () => {
+  const t = $("modalTagName").value.trim();
+  if (t && !tags.includes(t)) {
+    tags.push(t);
+    if (!tagColors[t]) tagColors[t] = "#38bdf8";
+    if (!tagThreads[t]) tagThreads[t] = { koua: "1", fumiya: "4" };
+    log(`タグ追加: ${t}`, "SYSTEM");
+    renderSequences();
+    renderTagColors();
+    renderTagThreads();
+    updateTestTagList();
+  }
+  $("tagModal").style.display = "none";
+};
+$("addSeqBtn").onclick = () => {
+  sequences.push({ id: generateUniqueId(), tag: tags[0] || "条件1", first: ranges[0]?.name || "", second: ranges[1]?.name || ranges[0]?.name || "", windowSec: 5 });
+  renderSequences();
+};
+$("discordPauseBtn").onclick = () => {
+  discordPaused = !discordPaused;
+  $("discordPauseBtn").textContent = discordPaused ? "Discord送信を再開" : "Discord送信を一時停止";
+  $("discordState").textContent = discordPaused ? "送信: 一時停止中" : "送信: 有効";
+};
+
+function getVolumeDb(timeData) {
+  let sum = 0;
+  for (let i = 0; i < timeData.length; i++) { const v = (timeData[i] - 128) / 128; sum += v * v; }
+  const rms = Math.sqrt(sum / timeData.length);
+  return rms <= 0.000001 ? 0 : Math.max(0, Math.min(100, 20 * Math.log10(rms) + 100));
+}
+
+function autoCorrelate(buf, sampleRate) {
+  let SIZE = buf.length, rms = 0;
+  for (let i = 0; i < SIZE; i++) rms += buf[i] * buf[i];
+  rms = Math.sqrt(rms / SIZE);
+  if (rms < 0.01) return -1;
+  let r1 = 0, r2 = SIZE - 1, thres = 0.05;
+  for (let i = 0; i < SIZE / 2; i++) { if (Math.abs(buf[i]) < thres) { r1 = i; break; } }
+  for (let i = 1; i < SIZE / 2; i++) { if (Math.abs(buf[SIZE - i]) < thres) { r2 = SIZE - i; break; } }
+  buf = buf.slice(r1, r2); SIZE = buf.length;
+  let c = new Array(SIZE).fill(0);
+  for (let i = 0; i < SIZE; i++) {
+    for (let j = 0; j < SIZE - i; j++) c[i] += buf[j] * buf[j + i];
+  }
+  let d = 0; while (c[d] > c[d + 1]) d++;
+  let maxval = -1, maxpos = -1;
+  for (let i = d; i < SIZE; i++) { if (c[i] > maxval) { maxval = c[i]; maxpos = i; } }
+  let T0 = maxpos, x1 = c[T0 - 1], x2 = c[T0], x3 = c[T0 + 1];
+  let a = (x1 + x3 - 2 * x2) / 2, b = (x3 - x1) / 2;
+  if (a) T0 -= b / (2 * a);
+  return sampleRate / T0;
+}
+
+function resetAllSequences() {
+  activeSeqStates.forEach(st => clearTimeout(st.timer));
+  activeSeqStates = [];
+  updateSeqStatusUI();
+}
+
+function updateSeqStatusUI() {
+  $("seqStatusList").innerHTML = activeSeqStates.length ? activeSeqStates.map(st => {
+    const seq = sequences.find(s => s.id === st.seqId);
+    return seq ? `<div style="color:#f59e0b;">⏳ <b>[${escapeHtml(seq.tag || '条件')}]</b> 「${escapeHtml(st.firstName)}」検出中 ➔ 「${escapeHtml(seq.second)}」待機</div>` : "";
+  }).join("") : `<span style="color:#94a3b8;">待機中のシーケンスなし</span>`;
+}
+
+function analyzeAudio() {
+  if (!running || !analyser) return;
+  const timeDataFloat = new Float32Array(analyser.fftSize);
+  const timeDataUint = new Uint8Array(analyser.fftSize);
+  analyser.getFloatTimeDomainData(timeDataFloat);
+  analyser.getByteTimeDomainData(timeDataUint);
+
+  const vol = getVolumeDb(timeDataUint);
+  const pitch = vol >= +$("volumeThreshold").value ? autoCorrelate(timeDataFloat, audioContext.sampleRate) : -1;
+  const peak = pitch > 0 ? pitch : 0;
+
+  $("frequency").textContent = Math.round(peak);
+  $("volume").textContent = vol.toFixed(1);
+  $("volumeBar").style.width = vol + "%";
+
+  if (vol >= +$("volumeThreshold").value && peak > 0) {
+    const matches = ranges.filter(r => peak >= r.low && peak <= r.high);
+    matches.forEach(r => {
+      if ($("seqEnable").checked) {
+        sequences.forEach((seq) => {
+          const state = activeSeqStates.find(st => st.seqId === seq.id);
+          const tag = seq.tag || `条件`;
+          if (r.name === seq.first && !state) {
+            const timer = setTimeout(() => {
+              log(`[${tag}] タイムアウト: 「${seq.second}」不検出`, "SEQ");
+              activeSeqStates = activeSeqStates.filter(st => st.seqId !== seq.id);
+              updateSeqStatusUI();
+            }, seq.windowSec * 1000);
+            activeSeqStates.push({ seqId: seq.id, timer, firstName: seq.first });
+            log(`[${tag}] トリガー: 「${seq.first}」検出。${seq.windowSec}秒待機開始`, "SEQ");
+            updateSeqStatusUI();
+          } else if (r.name === seq.second && state) {
+            log(`[${tag}] シーケンス成立: 「${seq.second}」検出！撮影開始`, "SEQ");
+            clearTimeout(state.timer);
+            activeSeqStates = activeSeqStates.filter(st => st.seqId !== seq.id);
+            updateSeqStatusUI();
+            triggerRange(r, peak, vol, tag, `${seq.first} ➔ ${seq.second}`);
+          }
+        });
+      } else { triggerRange(r, peak, vol, "単体検出", "単体音検出"); }
+    });
+    if (matches.length) {
+      const names = matches.map(r => r.name).join(", ");
+      $("statusMain").textContent = `${names} を検出中`;
+      $("lastDetected").textContent = `${names} (${Math.round(peak)} Hz)`;
+    }
+  }
+  rafId = requestAnimationFrame(analyzeAudio);
+}
+
+function renderTagColors() {
+  const list = $("tagColorList");
+  if (!list) return;
+  list.innerHTML = tags.map(tag => `
+    <div style="display:flex; align-items:center; gap:8px;">
+      <span style="min-width:90px;">${escapeHtml(tag)}</span>
+      <input type="color" value="${tagColors[tag] || "#38bdf8"}"
+        onchange="tagColors['${tag.replace(/'/g, "\\'")}']=this.value; updateTagColorText('${tag.replace(/'/g, "\\'")}', this.value)"
+        style="width:48px; height:32px; padding:0; border:0; cursor:pointer;">
+      <input type="text" value="${tagColors[tag] || "#38bdf8"}" data-tag="${escapeHtml(tag)}"
+        onchange="if(/^#[0-9a-fA-F]{6}$/.test(this.value)) { tagColors['${tag.replace(/'/g, "\\'")}']=this.value; document.querySelector('input[type=color][onchange*=\\'${tag.replace(/'/g, "\\\\'")}\\']').value=this.value; }"
+        style="max-width:120px; font-family:monospace;">
+    </div>`).join("");
+}
+window.updateTagColorText = function(tag, color) {
+  const input = document.querySelector(`input[type="text"][data-tag="${tag}"]`);
+  if (input) input.value = color;
+};
+
+// スレッド付きWebhook URLを生成
+function getThreadWebhookUrl(baseUrl, threadId) {
+  if (!baseUrl || !baseUrl.startsWith("http")) return null;
+  const separator = baseUrl.includes("?") ? "&" : "?";
+  return `${baseUrl}${separator}thread_id=${threadId}`;
+}
+
+// ============================================================
+// テスト送信機能
+// ============================================================
+function updateTestTagList() {
+  const container = document.getElementById('testTagGroup');
+  if (!container) return;
+  container.innerHTML = tags.map(tag => `
+    <label><input type="checkbox" class="test-tag" value="${escapeHtml(tag)}" checked> ${escapeHtml(tag)}</label>
+  `).join('');
+}
+
+// テスト用の黒いダミー画像を生成
+function createBlackImage() {
+  return new Promise((resolve) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 640;
+    canvas.height = 480;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, 640, 480);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '40px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('🧪 TEST', 320, 220);
+    ctx.font = '20px sans-serif';
+    ctx.fillText('テスト送信画像', 320, 290);
+    canvas.toBlob((blob) => {
+      resolve(blob);
+    }, 'image/jpeg', 0.9);
+  });
+}
+
+async function executeTestSend() {
+  const selectedChannels = [];
+  document.querySelectorAll('.test-channel:checked').forEach(cb => {
+    selectedChannels.push(cb.value);
+  });
+  
+  const selectedTags = [];
+  document.querySelectorAll('.test-tag:checked').forEach(cb => {
+    selectedTags.push(cb.value);
+  });
+  
+  if (!selectedChannels.length) {
+    alert('送信先チャンネルを少なくとも1つ選択してください。');
+    return;
+  }
+  if (!selectedTags.length) {
+    alert('テストタグを少なくとも1つ選択してください。');
+    return;
+  }
+  
+  const blackBlob = await createBlackImage();
+  if (!blackBlob) {
+    log('テスト画像の生成に失敗しました', 'ERROR');
+    return;
+  }
+  
+  let totalSuccess = 0;
+  let totalFail = 0;
+  
+  for (const channel of selectedChannels) {
+    for (const tag of selectedTags) {
+      const tagSetting = tagThreads[tag];
+      if (!tagSetting) continue;
+      
+      const threadId = channel === 'koua' ? tagSetting.koua : tagSetting.fumiya;
+      const webhookUrl = DESTINATION_WEBHOOKS[channel];
+      
+      if (!webhookUrl || !threadId) {
+        log(`⚠️ ${channel} の ${tag} 設定がありません`, 'TEST');
+        continue;
+      }
+      
+      const url = getThreadWebhookUrl(webhookUrl, threadId);
+      if (!url) {
+        log(`⚠️ ${channel} の URL が無効です`, 'TEST');
+        continue;
+      }
+      
+      try {
+        const dummyRange = { name: 'テスト' };
+        const blobs = [{ blob: blackBlob, label: 'テスト画像' }];
+        
+        log(`🧪 テスト送信開始: ${channel} → ${tag} (スレッド${threadId})`, 'TEST');
+        
+        await sendToDiscordMulti(
+          blobs, 
+          dummyRange, 
+          440, 
+          50, 
+          `テスト送信 (${channel}/${tag})`, 
+          url, 
+          tag
+        );
+        
+        log(`✅ テスト送信成功: ${channel} → ${tag} (スレッド${threadId})`, 'TEST');
+        totalSuccess++;
+      } catch (err) {
+        log(`❌ テスト送信失敗: ${channel} → ${tag}: ${err.message}`, 'ERROR');
+        totalFail++;
+      }
+    }
+  }
+  
+  log(`📊 テスト送信完了: 成功 ${totalSuccess}件 / 失敗 ${totalFail}件`, 'SYSTEM');
+  alert(`テスト送信完了！\n成功: ${totalSuccess}件\n失敗: ${totalFail}件\n\nログで詳細を確認してください。`);
+  document.getElementById('testModal').style.display = 'none';
+}
+
+// ============================================================
+// captureAllPhotos関数
+// ============================================================
+async function captureAllPhotos() {
+  if (!cameraStreams.length) throw new Error("有効なカメラがありません");
+  
+  const promises = cameraStreams.map((item) => {
+    return new Promise((resolve) => {
+      try {
+        const v = item.videoEl;
+        if (!v || v.readyState < 2) {
+          resolve(null);
+          return;
+        }
+        
+        const w = v.videoWidth || 1280;
+        const h = v.videoHeight || 720;
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(v, 0, 0, w, h);
+        
+        canvas.toBlob((blob) => {
+          resolve({ blob: blob, label: item.label || "カメラ" });
+        }, "image/jpeg", 0.85);
+      } catch (err) {
+        console.error("撮影エラー:", err);
+        resolve(null);
+      }
+    });
+  });
+  
+  const results = await Promise.all(promises);
+  return results.filter(r => r !== null && r.blob !== null && r.blob.size > 0);
+}
+
+// ============================================================
+// triggerRange関数
+// ============================================================
+function triggerRange(range, freq, volume, tagStr, seqInfo = "") {
+  const now = Date.now(), cooldown = +$("cooldown").value || 0;
+  if (now - (lastTriggered.get(range.name) || 0) < cooldown || pendingTimers.has(range.name)) return;
+  lastTriggered.set(range.name, now);
+  log(`撮影トリガー: ${range.name} (${Math.round(freq)} Hz / ${volume.toFixed(1)} dB) [${tagStr}]`, "DETECT");
+  const delay = +$("captureDelay").value || 0;
+  $("nextCapture").textContent = `${delay} ms後に撮影予定`;
+  const timer = setTimeout(async () => {
+    pendingTimers.delete(range.name);
+    $("nextCapture").textContent = "撮影中...";
+    try {
+      const blobs = await captureAllPhotos();
+      if (!blobs || !blobs.length) {
+        throw new Error("撮影画像がありません");
+      }
+
+      const firstBlob = blobs[0].blob;
+      if (!firstBlob || firstBlob.size === 0) {
+        throw new Error("画像データが空です");
+      }
+      
+      const photoUrl = URL.createObjectURL(firstBlob);
+      
+      if (capturedPhotos.length >= 20) {
+        const oldest = capturedPhotos.pop();
+        if (oldest && oldest.url) {
+          try { URL.revokeObjectURL(oldest.url); } catch(e) {}
+        }
+      }
+
+      capturedPhotos.unshift({ 
+        id: Date.now(), 
+        url: photoUrl, 
+        tag: tagStr, 
+        timestamp: new Date().toLocaleTimeString("ja-JP"), 
+        info: `${range.name} (${Math.round(freq)} Hz)` 
+      });
+      renderGallery();
+
+      if (discordPaused) {
+        $("nextCapture").textContent = "送信停止中";
+        return;
+      }
+
+      const tagSetting = tagThreads[tagStr];
+      const webhookTargets = [];
+      
+      if ($("kouaSend")?.checked && tagSetting && tagSetting.koua && DESTINATION_WEBHOOKS.koua) {
+        const threadId = tagSetting.koua;
+        const url = getThreadWebhookUrl(DESTINATION_WEBHOOKS.koua, threadId);
+        if (url) webhookTargets.push(["Koua", url, threadId]);
+      }
+      
+      if ($("fumiyaSend")?.checked && tagSetting && tagSetting.fumiya && DESTINATION_WEBHOOKS.fumiya) {
+        const threadId = tagSetting.fumiya;
+        const url = getThreadWebhookUrl(DESTINATION_WEBHOOKS.fumiya, threadId);
+        if (url) webhookTargets.push(["Fumiya", url, threadId]);
+      }
+
+      if (!webhookTargets.length) {
+        const defaultUrl = $("webhookUrl").value.trim();
+        if (defaultUrl && defaultUrl.startsWith("http")) {
+          const url = getThreadWebhookUrl(defaultUrl, "1");
+          if (url) webhookTargets.push(["デフォルト", url, "1"]);
+        }
+      }
+
+      if (!webhookTargets.length) {
+        $("nextCapture").textContent = "送信先未設定";
+        return;
+      }
+
+      await Promise.all(
+        webhookTargets.map(([name, url, threadId]) =>
+          sendToDiscordMulti(blobs, range, freq, volume, `${tagStr} (${seqInfo})`, url, tagStr)
+            .then(() => log(`Discord送信先: ${name} (スレッド${threadId})`, "DISCORD"))
+            .catch(err => log(`Discord送信失敗(${name}): ${err.message}`, "ERROR"))
+        )
+      );
+      $("nextCapture").textContent = "待機中";
+    } catch (err) {
+      log(`エラー: ${err.message || err}`, "ERROR");
+      $("nextCapture").textContent = "エラー";
+    }
+  }, delay);
+  pendingTimers.set(range.name, timer);
+}
+
+// ============================================================
+// sendToDiscordMulti関数
+// ============================================================
+async function sendToDiscordMulti(blobs, range, freq, volume, seqInfo, targetUrl, tagStr) {
+  const timestamp = getFormattedTimestamp();
+  const hex = (tagColors[tagStr] || "#38bdf8").replace("#", "");
+  const embedColor = parseInt(hex, 16) || 0x38bdf8;
+  const form = new FormData();
+
+  const payload = {
+    embeds: [{
+      title: "📷 音声検知・多角自動撮影通知",
+      color: embedColor,
+      fields: [
+        { name: "検知時刻", value: timestamp, inline: false },
+        { name: "タグ", value: tagStr, inline: true },
+        { name: "条件", value: seqInfo, inline: true },
+        { name: "音域", value: range.name, inline: true },
+        { name: "周波数", value: `${Math.round(freq)} Hz`, inline: true },
+        { name: "音量", value: `${volume.toFixed(1)} dB`, inline: true },
+        { name: "撮影カメラ数", value: `${blobs.length} 台`, inline: true }
+      ]
+    }]
+  };
+
+  form.append("payload_json", JSON.stringify(payload));
+  
+  blobs.forEach((item, index) => {
+    if (item && item.blob && item.blob.size > 0) {
+      form.append(`files[${index}]`, item.blob, `cam_${index + 1}_${Date.now()}.jpg`);
+    }
+  });
+
+  const res = await fetch(targetUrl, { method: "POST", body: form });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  log(`Discord送信成功 (全${blobs.length}台の画像送信)`, "DISCORD");
+}
+
+// ============================================================
+// カメラ・システム制御
+// ============================================================
+async function updateCameraDevices() {
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    videoDevices = devices.filter(d => d.kind === "videoinput");
+    $("switchCamBtn").style.display = videoDevices.length > 1 ? "flex" : "none";
+  } catch (e) { console.warn("デバイス一覧の取得失敗:", e); }
+}
+
+async function startSystem(deviceId = null) {
+  if (running && !deviceId) return;
+  try {
+    log("システム起動...", "SYSTEM");
+    $("statusMain").textContent = "起動中...";
+    await stopSystemStreams();
+
+    await updateCameraDevices();
+    cameraStreams = [];
+
+    if (videoDevices.length > 0) {
+      for (let i = 0; i < videoDevices.length; i++) {
+        const dev = videoDevices[i];
+        try {
+          const s = await navigator.mediaDevices.getUserMedia({
+            video: { deviceId: { exact: dev.deviceId } },
+            audio: (i === 0) ? { echoCancellation: false } : false
+          });
+
+          let vEl;
+          if (i === 0) {
+            vEl = $("video");
+          } else {
+            vEl = document.createElement("video");
+            vEl.autoplay = true;
+            vEl.playsInline = true;
+            vEl.muted = true;
+          }
+          vEl.srcObject = s;
+          await vEl.play().catch(() => {});
+          cameraStreams.push({ stream: s, videoEl: vEl, label: dev.label || `カメラ ${i+1}` });
+        } catch (err) {
+          console.warn(`カメラ[${dev.label}]の起動失敗:`, err);
+        }
+      }
+    }
+
+    if (!cameraStreams.length) {
+      const videoConstraints = deviceId ? { deviceId: { exact: deviceId } } : { facingMode: { ideal: "environment" } };
+      const defaultStream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: { echoCancellation: false } });
+      $("video").srcObject = defaultStream;
+      cameraStreams.push({ stream: defaultStream, videoEl: $("video"), label: "メインカメラ" });
+    }
+
+    $("noCamera").style.display = "none";
+
+    const audioStream = cameraStreams.find(c => c.stream.getAudioTracks().length > 0)?.stream;
+    if (audioStream) {
+      if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      await audioContext.resume();
+      if (audioSource) { try { audioSource.disconnect(); } catch {} }
+      audioSource = audioContext.createMediaStreamSource(audioStream);
+      if (!analyser) {
+        analyser = audioContext.createAnalyser();
+        analyser.fftSize = 2048;
+        analyser.smoothingTimeConstant = 0.5;
+      }
+      audioSource.connect(analyser);
+    }
+
+    running = true;
+    $("startBtn").disabled = true;
+    $("stopBtn").disabled = false;
+    $("statusMain").textContent = "実行中";
+    analyzeAudio();
+  } catch (err) {
+    log(`起動失敗: ${err.message || err}`, "ERROR");
+    stopSystem(false);
+  }
+}
+
+async function stopSystemStreams() {
+  cameraStreams.forEach(item => {
+    if (item.stream) item.stream.getTracks().forEach(t => t.stop());
+    if (item.videoEl && item.videoEl !== $("video")) item.videoEl.remove();
+  });
+  cameraStreams = [];
+}
+
+function stopSystem(writeLog = true) {
+  running = false;
+  if (rafId) cancelAnimationFrame(rafId);
+  resetAllSequences();
+  pendingTimers.forEach(clearTimeout); pendingTimers.clear();
+  [audioSource, analyser].forEach(node => { try { node?.disconnect(); } catch {} });
+  if (audioContext) try { audioContext.close(); } catch {}
+  stopSystemStreams();
+  audioSource = analyser = audioContext = null;
+  $("video").srcObject = null;
+  $("noCamera").style.display = "grid";
+  $("noCamera").textContent = "停止中";
+  $("switchCamBtn").style.display = "none";
+  $("startBtn").disabled = false;
+  $("stopBtn").disabled = true;
+  $("statusMain").textContent = "停止中";
+  if (writeLog) log("システム停止", "SYSTEM");
+}
+
+// ============================================================
+// イベントリスナー
+// ============================================================
+$("switchCamBtn").onclick = async () => {
+  if (!videoDevices.length) return;
+  currentVideoDeviceIndex = (currentVideoDeviceIndex + 1) % videoDevices.length;
+  const nextDeviceId = videoDevices[currentVideoDeviceIndex].deviceId;
+  log(`カメラ切替: ${videoDevices[currentVideoDeviceIndex].label || 'カメラ ' + (currentVideoDeviceIndex + 1)}`, "SYSTEM");
+  await startSystem(nextDeviceId);
+};
+$("startBtn").onclick = () => startSystem();
+$("stopBtn").onclick = () => stopSystem(true);
+
+$("testSendBtn").onclick = () => {
+  updateTestTagList();
+  document.getElementById('testModal').style.display = 'grid';
+};
+$("testModalCancelBtn").onclick = () => {
+  document.getElementById('testModal').style.display = 'none';
+};
+$("testModalSubmitBtn").onclick = executeTestSend;
+
+document.getElementById('testModal').onclick = (e) => {
+  if (e.target === document.getElementById('testModal')) {
+    document.getElementById('testModal').style.display = 'none';
+  }
+};
+
+// ============================================================
+// Hz2 Logic（簡略化）
+// ============================================================
+$("execHzBtn").onclick = () => {
+  if (running) stopSystem(false);
+  $("mainApp").style.display = "none";
+  const root = document.createElement("div");
+  root.id = "hz2-root";
+  root.innerHTML = `
+    <div id="info-container">
+      <button id="hz2-back-btn" class="back-btn">⬅ メイン画面に戻る</button>
+      <div id="hz2-display-area">
+        <div>CURRENT FREQUENCY</div>
+        <span id="hz2-hz-val" class="hz-display">0</span> <span class="hz-unit">Hz</span>
+        <span id="hz2-pause-badge" class="pause-badge">PAUSED</span>
+      </div>
+      <span class="pause-hint">(画面クリック / Spaceキーで一時停止・再開)</span>
+    </div>
+    <div id="log-container">
+      <div id="log-header" class="log-header">
+        <span class="log-header-title">FREQUENCY LOGS</span>
+        <div class="log-controls"><button id="clear-log-btn" class="action-btn">クリア</button><button id="toggle-log-btn" class="action-btn">━</button></div>
+      </div>
+      <div class="log-body"><ul id="log-list"></ul></div>
+    </div>
+    <div id="tooltip"></div>
+    <div id="controls-container">
+      <div class="control-group"><label for="threshold-slider">音量感度 (閾値): <span id="threshold-val">0.0150</span></label><input type="range" id="threshold-slider" min="0.0001" max="0.05" step="0.0005" value="0.015"></div>
+      <div class="control-group"><label for="filter-slider">ノイズカット (HPF): <span id="filter-val">80 Hz</span></label><input type="range" id="filter-slider" min="0" max="500" step="10" value="80"></div>
+      <div class="control-group"><label for="maxhz-slider">最大周波数 (スケール): <span id="maxhz-val">3000 Hz</span></label><input type="range" id="maxhz-slider" min="500" max="5000" step="100" value="3000"></div>
+    </div>
+    <canvas id="visualizer"></canvas>`;
+  document.body.appendChild(root);
+  
+  // 簡略化されたHz2ロジック
+  const canvas = root.querySelector('#visualizer'), ctx = canvas.getContext('2d');
+  const hzVal = root.querySelector('#hz2-hz-val'), pauseBadge = root.querySelector('#hz2-pause-badge');
+  const backBtn = root.querySelector('#hz2-back-btn'), logContainer = root.querySelector('#log-container');
+  const logHeader = root.querySelector('#log-header'), toggleLogBtn = root.querySelector('#toggle-log-btn');
+  const logList = root.querySelector('#log-list'), clearLogBtn = root.querySelector('#clear-log-btn'), tooltip = root.querySelector('#tooltip');
+  const thresholdSlider = root.querySelector('#threshold-slider'), thresholdVal = root.querySelector('#threshold-val');
+  const filterSlider = root.querySelector('#filter-slider'), filterVal = root.querySelector('#filter-val');
+  const maxhzSlider = root.querySelector('#maxhz-slider'), maxhzVal = root.querySelector('#maxhz-val');
+  let audioCtx, analyser, filterNode, dataArray, history = [];
+  let isPaused = false, mouseX = null, mouseY = null, isDraggingCanvas = false, isDuplicatePattern = false;
+  let rmsThreshold = 0.015, maxHz = 3000, cutoffFreq = 80, lastLoggedHz = null;
+  let isDraggingLog = false, logOffsetX = 0, logOffsetY = 0, hz2RafId = null, localStream = null;
+
+  function togglePause() {
+    isPaused = !isPaused;
+    pauseBadge.classList.toggle('active', isPaused);
+    if (!isPaused) draw();
+  }
+  const handleKeyDown = e => { if (e.code === 'Space' && e.target.tagName !== 'INPUT') { e.preventDefault(); togglePause(); } };
+  window.addEventListener('keydown', handleKeyDown);
+  logHeader.onmousedown = e => {
+    if (e.target.tagName === 'BUTTON') return;
+    isDraggingLog = true;
+    const rect = logContainer.getBoundingClientRect();
+    logOffsetX = e.clientX - rect.left; logOffsetY = e.clientY - rect.top;
+  };
+  const onMouseMove = e => {
+    if (!isDraggingLog) return;
+    logContainer.style.right = 'auto';
+    logContainer.style.left = `${e.clientX - logOffsetX}px`;
+    logContainer.style.top = `${e.clientY - logOffsetY}px`;
+  };
+  const onMouseUp = () => { isDraggingLog = false; };
+  window.addEventListener('mousemove', onMouseMove); window.addEventListener('mouseup', onMouseUp);
+  toggleLogBtn.onclick = () => {
+    logContainer.classList.toggle('minimized');
+    toggleLogBtn.textContent = logContainer.classList.contains('minimized') ? '❏' : '━';
+  };
+  thresholdSlider.oninput = e => { rmsThreshold = parseFloat(e.target.value); thresholdVal.textContent = rmsThreshold.toFixed(4); };
+  filterSlider.oninput = e => { cutoffFreq = parseFloat(e.target.value); filterVal.textContent = `${cutoffFreq} Hz`; if (filterNode) filterNode.frequency.value = cutoffFreq; };
+  maxhzSlider.oninput = e => { maxHz = parseInt(e.target.value, 10); maxhzVal.textContent = `${maxHz} Hz`; if (isPaused) drawStatic(); };
+  clearLogBtn.onclick = () => { logList.innerHTML = ''; lastLoggedHz = null; };
+  canvas.onmousedown = e => { isDraggingCanvas = true; updateMousePos(e); };
+  canvas.onclick = e => { if (e.target === canvas) togglePause(); };
+  canvas.onmousemove = e => updateMousePos(e);
+  window.addEventListener('mouseup', () => { isDraggingCanvas = false; });
+  canvas.onmouseleave = () => {
+    if (!isDraggingCanvas) { mouseX = mouseY = null; tooltip.style.display = 'none'; if (isPaused) drawStatic(); }
+  };
+  function updateMousePos(e) {
+    const rect = canvas.getBoundingClientRect();
+    mouseX = e.clientX - rect.left; mouseY = e.clientY - rect.top;
+    if (isPaused || isDraggingCanvas) drawStatic();
+  }
+  function resizeCanvas() {
+    canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+    if (isPaused) drawStatic();
+  }
+  window.addEventListener('resize', resizeCanvas); resizeCanvas();
+  async function startHz2Audio() {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    localStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+    const source = audioCtx.createMediaStreamSource(localStream);
+    filterNode = audioCtx.createBiquadFilter(); filterNode.type = 'highpass'; filterNode.frequency.value = cutoffFreq;
+    analyser = audioCtx.createAnalyser(); analyser.fftSize = 2048;
+    source.connect(filterNode); filterNode.connect(analyser);
+    dataArray = new Float32Array(analyser.fftSize); draw();
+  }
+  startHz2Audio();
+  backBtn.onclick = () => {
+    if (hz2RafId) cancelAnimationFrame(hz2RafId);
+    if (localStream) localStream.getTracks().forEach(t => t.stop());
+    if (audioCtx) audioCtx.close();
+    window.removeEventListener('keydown', handleKeyDown); window.removeEventListener('mousemove', onMouseMove);
+    window.removeEventListener('mouseup', onMouseUp); window.removeEventListener('resize', resizeCanvas);
+    root.remove(); $("mainApp").style.display = "grid";
+    log("メイン画面に復帰しました。自動再開します", "SYSTEM"); startSystem();
+  };
+  function addLogMessage(message) {
+    const li = document.createElement('li');
+    li.textContent = `[${new Date().toTimeString().split(' ')[0]}] ${message}`;
+    logList.insertBefore(li, logList.firstChild);
+    if (logList.children.length > 50) logList.removeChild(logList.lastChild);
+  }
+  function renderLineAndGuide() {
+    ctx.fillStyle = '#0d1117'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const centerY = canvas.height / 2;
+    ctx.strokeStyle = '#30363d'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(0, centerY); ctx.lineTo(canvas.width, centerY); ctx.stroke();
+    ctx.fillStyle = '#8b949e'; ctx.font = '12px monospace';
+    const step = maxHz > 2000 ? 500 : 200;
+    for (let hz = step; hz <= maxHz; hz += step) {
+      let y = centerY - (hz / maxHz) * centerY;
+      ctx.strokeStyle = '#21262d'; ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+    }
+    ctx.beginPath(); ctx.lineWidth = 3; ctx.strokeStyle = isDuplicatePattern ? '#ff5555' : '#58a6ff';
+    for (let x = 0; x < history.length; x++) {
+      const screenX = canvas.width - x, screenY = centerY - (history[x] / maxHz) * centerY;
+      if (x === 0) ctx.moveTo(screenX, screenY); else ctx.lineTo(screenX, screenY);
+    }
+    ctx.stroke();
+    if (mouseX !== null && history.length > 0) {
+      const historyIndex = Math.round(canvas.width - mouseX);
+      if (historyIndex >= 0 && historyIndex < history.length) {
+        const pointHz = history[historyIndex], pointY = centerY - (pointHz / maxHz) * centerY;
+        ctx.strokeStyle = '#f2994a'; ctx.lineWidth = 1; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(mouseX, 0); ctx.lineTo(mouseX, canvas.height); ctx.stroke(); ctx.setLineDash([]);
+        ctx.fillStyle = '#f2994a'; ctx.beginPath(); ctx.arc(mouseX, pointY, 6, 0, Math.PI * 2); ctx.fill();
+        tooltip.style.display = 'block'; tooltip.style.left = `${mouseX + 15}px`; tooltip.style.top = `${pointY - 30}px`;
+        tooltip.innerHTML = `<div><strong>${Math.round(pointHz)} Hz</strong></div><div style="color:#8b949e; font-size:0.75rem;">${(historyIndex * (1000 / 60) / 1000).toFixed(1)}秒前</div>`;
+      }
+    }
+  }
+  function draw() {
+    if (isPaused) return;
+    analyser.getFloatTimeDomainData(dataArray);
+    const currentHz = autoCorrelate(dataArray, audioCtx.sampleRate);
+    let pitch = (currentHz !== -1 && currentHz > 0 && currentHz <= maxHz) ? currentHz : 0;
+    hzVal.textContent = Math.round(pitch);
+    history.unshift(pitch);
+    if (history.length > canvas.width) history.pop();
+    const roundedCurrentHz = Math.round(pitch);
+    if (roundedCurrentHz > 0) {
+      const matchCount = history.filter(hz => Math.round(hz) === roundedCurrentHz).length;
+      if (matchCount >= 3) {
+        isDuplicatePattern = true; hzVal.classList.add('highlight');
+        if (lastLoggedHz !== roundedCurrentHz) { addLogMessage(`Detected: ${roundedCurrentHz} Hz (${matchCount} times)`); lastLoggedHz = roundedCurrentHz; }
+      } else {
+        isDuplicatePattern = false; hzVal.classList.remove('highlight');
+        if (matchCount < 2) lastLoggedHz = null;
+      }
+    } else { isDuplicatePattern = false; hzVal.classList.remove('highlight'); lastLoggedHz = null; }
+    renderLineAndGuide(); hz2RafId = requestAnimationFrame(draw);
+  }
+  function drawStatic() { renderLineAndGuide(); }
+  
+  log("同タブ内で外部アナライザー(hz_2.html)を実行しました", "SYSTEM");
+};
+
+// ============================================================
+// 初期化
+// ============================================================
+renderTagColors();
+renderTagThreads();
+renderRanges(); renderSequences();
+updateTestTagList();
+
+// ページ読み込み完了後、認証画面が表示された状態で待機
+console.log('システム起動待機中... パスワード: brainrot');
+</script>
+</body>
+</html>
