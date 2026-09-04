@@ -13,7 +13,6 @@
 .top-title{grid-column:2;border-radius:10px;padding:12px 18px;display:flex;align-items:center;justify-content:center;font-size:clamp(16px,2.2vw,24px);font-weight:800}
 .camera{grid-column:1;min-height:260px;background:#0a0a0a;position:relative;display:flex;align-items:center;justify-content:center;border-radius:18px;overflow:hidden}
 video{width:100%;height:100%;object-fit:cover;background:#111;display:block}
-#videoPreview{width:100%;height:100%;object-fit:cover;background:#111;display:none}
 .video-loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#94a3b8;z-index:5;font-size:14px;background:rgba(0,0,0,0.7);pointer-events:none}
 .video-loaded .video-loading{display:none}
 .no-camera{position:absolute;inset:0;display:none;place-items:center;color:#94a3b8;padding:25px;pointer-events:none;font-size:14px;z-index:5;background:rgba(0,0,0,0.8)}
@@ -185,13 +184,15 @@ button:disabled{opacity:.3;cursor:not-allowed}
     <button id="testSendBtn" class="test-btn">🧪 テスト送信</button>
   </div></section>
   <section class="panel top-title">"DiscordMessaging"</section>
+  
+  <!-- ★★★ カメラ部分（完全に作り直し） ★★★ -->
   <section class="panel camera" id="cameraPanel">
     <video id="video" autoplay playsinline muted></video>
-    <canvas id="videoPreview" style="display:none;"></canvas>
     <div class="video-loading" id="videoLoading">📷 カメラを起動中...</div>
     <div id="noCamera" class="no-camera">📷 カメラが使用できません</div>
     <button id="switchCamBtn" class="camera-switch-btn" title="カメラ切り替え">↺<span class="camera-count" id="cameraCount">0</span></button>
   </section>
+  
   <section class="panel status">
     <h2>ステータス</h2><div id="statusMain" class="status-main">待機中</div>
     <div class="freq"><span id="frequency">0</span> Hz</div>
@@ -273,27 +274,25 @@ button:disabled{opacity:.3;cursor:not-allowed}
 // 認証
 // ============================================================
 const PASSWORD = "brainrot";
-function authenticate(){const i=document.getElementById('auth-password'),e=document.getElementById('auth-error');if(i.value===PASSWORD){document.getElementById('auth-overlay').style.display='none';document.getElementById('mainApp').style.display='grid';setTimeout(startSystem,500)}else{e.textContent='❌ パスワードが違います';i.value='';i.focus();setTimeout(()=>e.textContent='',3000)}}
+function authenticate(){const i=document.getElementById('auth-password'),e=document.getElementById('auth-error');if(i.value===PASSWORD){document.getElementById('auth-overlay').style.display='none';document.getElementById('mainApp').style.display='grid';setTimeout(startSystem,300)}else{e.textContent='❌ パスワードが違います';i.value='';i.focus();setTimeout(()=>e.textContent='',3000)}}
 document.getElementById('auth-password').addEventListener('keydown',e=>{if(e.key==='Enter')authenticate()});
 
 // ============================================================
 // 定数・変数（基本設定）
 // ============================================================
 const $=id=>document.getElementById(id),esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]));
-let photos=[],logs=[],seqStates=[],lastTrigger=new Map,timers=new Map,filter="ALL",actx=null,analyser=null,src=null,raf=null,running=false,paused=false,editIdx=null,vDevices=[],camIdx=0,streams=[];
-let useFrontCamera = true;
+let photos=[],logs=[],seqStates=[],lastTrigger=new Map,timers=new Map,filter="ALL",actx=null,analyser=null,src=null,raf=null,running=false,paused=false,editIdx=null,vDevices=[],streams=[];
+let currentCameraIndex = 0;
 
 // ============================================================
 // ★★★ ユーザー設定エリア（ここを編集してください） ★★★
 // ============================================================
 
-// -------- 1. Discord Webhook URL --------
 const WEBHOOKS = {
   koua: "https://discord.com/api/webhooks/1544588432100302899/hd7Od9KkQMKRM5DzeWWKCgwMYTyzR6TVLs0-X-01o0w3w_90fcc-TxPyNM1kkrI_eGgJ",
   fumiya: "https://discord.com/api/webhooks/1534838115766636587/QTze72Dgr8B7P4fFFewQeauXZRrZfMAitO0kVYipKl-pWyfSXIG158KKR7mrRJ-1HD3c"
 };
 
-// -------- 2. タグ設定 --------
 let tags = ["forbidden", "ascended", "divine"];
 
 let colors = {
@@ -302,14 +301,12 @@ let colors = {
   divine: "#00FFFF"
 };
 
-// -------- 3. スレッドID設定（実際のDiscordスレッドID） --------
 let threads = {
   forbidden: { koua: "1545089976625274991", fumiya: "1545089552450846760" },
   ascended: { koua: "1545090039468396674", fumiya: "1545089627743060138" },
   divine: { koua: "1545090100768145499", fumiya: "1545089707824783400" }
 };
 
-// -------- 4. 音域設定 --------
 let ranges = [
   { name: "forbidden1st", low: 430, high: 450 },
   { name: "forbidden2nd", low: 380, high: 400 },
@@ -319,7 +316,6 @@ let ranges = [
   { name: "divine2nd", low: 300, high: 500 }
 ];
 
-// -------- 5. シーケンス条件設定 --------
 let seqs = [
   { id: "s1", tag: "forbidden", first: "forbidden1st", second: "forbidden2nd", windowSec: 5 },
   { id: "s2", tag: "ascended", first: "ascended1st", second: "ascended2nd", windowSec: 5 },
@@ -327,9 +323,388 @@ let seqs = [
 ];
 
 // ============================================================
-// ここから下は編集不要（内部処理）
+// ★★★ カメラ制御（完全に作り直し） ★★★
 // ============================================================
 
+let mainStream = null;
+let isCameraReady = false;
+
+// カメラを起動してvideo要素に表示する関数
+async function startCamera(deviceId) {
+    const video = document.getElementById('video');
+    const loading = document.getElementById('videoLoading');
+    const noCamera = document.getElementById('noCamera');
+    const panel = document.getElementById('cameraPanel');
+    
+    try {
+        // ローディング表示
+        loading.style.display = 'flex';
+        loading.textContent = '📷 カメラ起動中...';
+        noCamera.style.display = 'none';
+        
+        // 既存のストリームを停止
+        if (mainStream) {
+            mainStream.getTracks().forEach(t => t.stop());
+            mainStream = null;
+        }
+        
+        // カメラの設定
+        const constraints = {
+            video: {
+                deviceId: deviceId ? { exact: deviceId } : undefined,
+                width: { ideal: 640 },
+                height: { ideal: 480 },
+                facingMode: deviceId ? undefined : 'user'
+            },
+            audio: true
+        };
+        
+        // カメラを取得
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        mainStream = stream;
+        
+        // video要素に設定
+        video.srcObject = stream;
+        video.autoplay = true;
+        video.playsInline = true;
+        video.muted = true;
+        
+        // 映像が表示されるまで待機
+        await new Promise((resolve) => {
+            const checkVideo = () => {
+                if (video.readyState >= 2) {
+                    resolve();
+                } else {
+                    video.addEventListener('loadeddata', resolve, { once: true });
+                    setTimeout(resolve, 3000);
+                }
+            };
+            checkVideo();
+        });
+        
+        // 映像を表示
+        video.style.display = 'block';
+        video.style.visibility = 'visible';
+        video.style.opacity = '1';
+        loading.style.display = 'none';
+        noCamera.style.display = 'none';
+        if (panel) panel.classList.add('video-loaded');
+        
+        isCameraReady = true;
+        log('✅ カメラ起動成功', 'SYSTEM');
+        
+        // 音声処理を設定
+        if (stream.getAudioTracks().length > 0) {
+            setupAudio(stream);
+        }
+        
+        return stream;
+        
+    } catch (err) {
+        console.error('カメラ起動エラー:', err);
+        loading.textContent = '❌ カメラエラー: ' + err.message;
+        noCamera.style.display = 'grid';
+        noCamera.textContent = '📷 ' + err.message;
+        isCameraReady = false;
+        log('❌ カメラ起動失敗: ' + err.message, 'ERROR');
+        return null;
+    }
+}
+
+// 音声処理を設定
+function setupAudio(stream) {
+    try {
+        if (actx) {
+            try { actx.close(); } catch(e) {}
+            actx = null;
+        }
+        actx = new (window.AudioContext || window.webkitAudioContext)();
+        if (src) {
+            try { src.disconnect(); } catch(e) {}
+            src = null;
+        }
+        src = actx.createMediaStreamSource(stream);
+        if (!analyser) {
+            analyser = actx.createAnalyser();
+            analyser.fftSize = 2048;
+            analyser.smoothingTimeConstant = 0.5;
+        }
+        src.connect(analyser);
+        actx.resume();
+        log('✅ 音声処理設定完了', 'SYSTEM');
+    } catch (err) {
+        log('⚠️ 音声処理設定エラー: ' + err.message, 'WARNING');
+    }
+}
+
+// カメラデバイス一覧を取得
+async function scanCameras() {
+    try {
+        // 権限確認のため一時的にカメラを起動
+        try {
+            const tempStream = await navigator.mediaDevices.getUserMedia({ video: true });
+            tempStream.getTracks().forEach(t => t.stop());
+        } catch(e) {
+            // 権限がない場合
+        }
+        
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        vDevices = devices.filter(d => d.kind === 'videoinput');
+        
+        log(`📷 カメラ${vDevices.length}台検出`, 'SYSTEM');
+        
+        // カメラ切替ボタンの表示制御
+        const btn = document.getElementById('switchCamBtn');
+        const badge = document.getElementById('cameraCount');
+        if (vDevices.length > 1) {
+            btn.style.display = 'flex';
+            btn.style.visibility = 'visible';
+            if (badge) {
+                badge.textContent = vDevices.length;
+                badge.style.display = 'flex';
+            }
+            log('✅ カメラ切替ボタン表示', 'SYSTEM');
+        } else {
+            btn.style.display = 'none';
+            if (badge) badge.style.display = 'none';
+        }
+        
+        return vDevices;
+    } catch (err) {
+        log('⚠️ カメラスキャンエラー: ' + err.message, 'WARNING');
+        return [];
+    }
+}
+
+// ============================================================
+// ★★★ システム制御（簡略化） ★★★
+// ============================================================
+
+async function startSystem() {
+    if (running) return;
+    
+    try {
+        log('🚀 システム起動開始', 'SYSTEM');
+        document.getElementById('statusMain').textContent = '起動中...';
+        
+        // カメラをスキャン
+        await scanCameras();
+        
+        if (vDevices.length === 0) {
+            document.getElementById('noCamera').style.display = 'grid';
+            document.getElementById('noCamera').textContent = '📷 カメラが見つかりません';
+            document.getElementById('statusMain').textContent = 'カメラなし';
+            return;
+        }
+        
+        // 最初のカメラを起動
+        const deviceId = vDevices[currentCameraIndex]?.deviceId;
+        const stream = await startCamera(deviceId);
+        
+        if (!stream) {
+            document.getElementById('statusMain').textContent = 'カメラエラー';
+            return;
+        }
+        
+        running = true;
+        document.getElementById('startBtn').disabled = true;
+        document.getElementById('stopBtn').disabled = false;
+        document.getElementById('statusMain').textContent = '実行中';
+        
+        // 解析ループ開始
+        if (raf) cancelAnimationFrame(raf);
+        analyze();
+        
+        log('✅ システム起動完了', 'SYSTEM');
+        
+    } catch (err) {
+        log('❌ 起動失敗: ' + err.message, 'ERROR');
+        document.getElementById('statusMain').textContent = '起動失敗';
+    }
+}
+
+function stopSystem() {
+    running = false;
+    if (raf) cancelAnimationFrame(raf);
+    
+    // カメラ停止
+    if (mainStream) {
+        mainStream.getTracks().forEach(t => t.stop());
+        mainStream = null;
+    }
+    document.getElementById('video').srcObject = null;
+    document.getElementById('video').style.display = 'none';
+    document.getElementById('noCamera').style.display = 'grid';
+    document.getElementById('noCamera').textContent = '📷 停止中';
+    document.getElementById('videoLoading').style.display = 'none';
+    document.getElementById('switchCamBtn').style.display = 'none';
+    
+    // 音声処理停止
+    if (src) {
+        try { src.disconnect(); } catch(e) {}
+        src = null;
+    }
+    if (actx) {
+        try { actx.close(); } catch(e) {}
+        actx = null;
+    }
+    analyser = null;
+    
+    document.getElementById('startBtn').disabled = false;
+    document.getElementById('stopBtn').disabled = true;
+    document.getElementById('statusMain').textContent = '停止中';
+    
+    // シーケンスリセット
+    resetSeqs();
+    timers.forEach(clearTimeout);
+    timers.clear();
+    
+    isCameraReady = false;
+    log('⏹ システム停止', 'SYSTEM');
+}
+
+// カメラ切り替え
+async function switchCamera() {
+    if (!vDevices.length || vDevices.length < 2) {
+        log('⚠️ 切り替え可能なカメラがありません', 'WARNING');
+        return;
+    }
+    
+    // 次のカメラに切り替え
+    currentCameraIndex = (currentCameraIndex + 1) % vDevices.length;
+    const device = vDevices[currentCameraIndex];
+    const label = device.label || `カメラ ${currentCameraIndex + 1}`;
+    
+    log(`🔄 カメラ切替: ${label} (${currentCameraIndex + 1}/${vDevices.length})`, 'SYSTEM');
+    
+    const loading = document.getElementById('videoLoading');
+    loading.style.display = 'flex';
+    loading.textContent = '📷 カメラ切替中...';
+    document.getElementById('cameraPanel').classList.remove('video-loaded');
+    
+    // 新しいカメラを起動
+    const stream = await startCamera(device.deviceId);
+    
+    if (stream) {
+        log('✅ カメラ切替完了', 'SYSTEM');
+    } else {
+        log('❌ カメラ切替失敗', 'ERROR');
+        // 元のカメラに戻す
+        currentCameraIndex = (currentCameraIndex - 1 + vDevices.length) % vDevices.length;
+        await startCamera(vDevices[currentCameraIndex]?.deviceId);
+    }
+}
+
+// ============================================================
+// 音声解析
+// ============================================================
+function getVol(d){let s=0;for(let i=0;i<d.length;i++){const v=(d[i]-128)/128;s+=v*v}const r=Math.sqrt(s/d.length);return r<=1e-6?0:Math.max(0,Math.min(100,20*Math.log10(r)+100))}
+function autoCorrelate(b,rate){let n=b.length,r=0;for(let i=0;i<n;i++)r+=b[i]*b[i];r=Math.sqrt(r/n);if(r<0.01)return-1;let a=0,c=n-1,t=0.05;for(let i=0;i<n/2;i++){if(Math.abs(b[i])<t){a=i;break}}for(let i=1;i<n/2;i++){if(Math.abs(b[n-i])<t){c=n-i;break}}b=b.slice(a,c);n=b.length;let corr=new Array(n).fill(0);for(let i=0;i<n;i++){for(let j=0;j<n-i;j++)corr[i]+=b[j]*b[j+i]}let d=0;while(corr[d]>corr[d+1])d++;let max=-1,pos=-1;for(let i=d;i<n;i++){if(corr[i]>max){max=corr[i];pos=i}}let T=pos,x1=corr[T-1]||0,x2=corr[T],x3=corr[T+1]||0;let A=(x1+x3-2*x2)/2,B=(x3-x1)/2;if(A)T-=B/(2*A);return rate/T}
+
+function analyze(){
+    if(!running||!analyser||!actx)return;
+    const f=new Float32Array(analyser.fftSize),u=new Uint8Array(analyser.fftSize);
+    analyser.getFloatTimeDomainData(f);
+    analyser.getByteTimeDomainData(u);
+    const vol=getVol(u);
+    const pitch=vol>=+$("volumeThreshold").value&&actx?autoCorrelate(f,actx.sampleRate):-1;
+    const peak=pitch>0?pitch:0;
+    $("frequency").textContent=Math.round(peak);
+    $("volume").textContent=vol.toFixed(1);
+    $("volumeBar").style.width=vol+"%";
+    if(vol>=+$("volumeThreshold").value&&peak>0){
+        const matches=ranges.filter(r=>peak>=r.low&&peak<=r.high);
+        matches.forEach(r=>{
+            if($("seqEnable").checked){
+                seqs.forEach(s=>{
+                    const state=seqStates.find(x=>x.seqId===s.id);
+                    const tag=s.tag||"条件";
+                    if(r.name===s.first&&!state){
+                        const t=setTimeout(()=>{
+                            log(`[${tag}] タイムアウト`,"SEQ");
+                            seqStates=seqStates.filter(x=>x.seqId!==s.id);
+                            updateSeqUI()
+                        },s.windowSec*1000);
+                        seqStates.push({seqId:s.id,timer:t,firstName:s.first});
+                        log(`[${tag}] トリガー:${s.first}`,"SEQ");
+                        updateSeqUI()
+                    }else if(r.name===s.second&&state){
+                        log(`[${tag}] 成立:${s.second}`,"SEQ");
+                        clearTimeout(state.timer);
+                        seqStates=seqStates.filter(x=>x.seqId!==s.id);
+                        updateSeqUI();
+                        trigger(r,peak,vol,tag,`${s.first}➔${s.second}`)
+                    }
+                })
+            }else trigger(r,peak,vol,"単体検出","単体")
+        });
+        if(matches.length){
+            const names=matches.map(r=>r.name).join(", ");
+            $("statusMain").textContent=`${names} 検出中`;
+            $("lastDetected").textContent=`${names} (${Math.round(peak)}Hz)`
+        }
+    }
+    raf=requestAnimationFrame(analyze)
+}
+
+// ============================================================
+// シーケンス制御（簡略化）
+// ============================================================
+function resetSeqs(){seqStates.forEach(s=>clearTimeout(s.timer));seqStates=[];updateSeqUI()}
+function updateSeqUI(){$("seqStatusList").innerHTML=seqStates.length?seqStates.map(s=>{const q=seqs.find(x=>x.id===s.seqId);return q?`<div style="color:#f59e0b">⏳ [${esc(q.tag)}] 「${esc(s.firstName)}」検出中 ➔ 「${esc(q.second)}」待機</div>`:""}).join(""):'<span style="color:#94a3b8">待機中</span>'}
+
+// ============================================================
+// 撮影・送信（簡略化）
+// ============================================================
+function getThreadUrl(base,id){if(!base||!base.startsWith("http"))return null;const sep=base.includes("?")?"&":"?";return base+sep+"thread_id="+id}
+async function captureAll(){if(!mainStream)throw new Error("カメラなし");const v=document.getElementById('video');if(!v||v.readyState<2)throw new Error("映像準備中");const w=v.videoWidth||640,h=v.videoHeight||480,c=document.createElement("canvas");c.width=w;c.height=h;c.getContext("2d").drawImage(v,0,0,w,h);return new Promise(r=>c.toBlob(b=>r([{blob:b,label:"カメラ"}]),"image/jpeg",.85))}
+async function sendDiscord(blobs,range,freq,vol,info,url,tag){const t=ts(),tagColor=colors[tag]||"#38bdf8",hex=tagColor.replace("#",""),color=parseInt(hex,16)||0x38bdf8,form=new FormData(),payload={embeds:[{title:"📷 音声検知通知",color,fields:[{name:"時刻",value:t},{name:"タグ",value:tag},{name:"条件",value:info},{name:"音域",value:range.name},{name:"周波数",value:`${Math.round(freq)}Hz`},{name:"音量",value:`${vol.toFixed(1)}dB`},{name:"カメラ数",value:`${blobs.length}台`}]}]};form.append("payload_json",JSON.stringify(payload));blobs.forEach((item,i)=>{if(item&&item.blob&&item.blob.size>0)form.append(`files[${i}]`,item.blob,`cam_${i+1}_${Date.now()}.jpg`)});const res=await fetch(url,{method:"POST",body:form});if(!res.ok)throw new Error(`HTTP ${res.status}`);log(`Discord送信OK(${blobs.length}台)`,"DISCORD")}
+async function trigger(range,freq,vol,tag,info){const now=Date.now(),cd=+$("cooldown").value||0;if(now-(lastTrigger.get(range.name)||0)<cd||timers.has(range.name))return;lastTrigger.set(range.name,now);log(`トリガー:${range.name}(${Math.round(freq)}Hz/${vol.toFixed(1)}dB)[${tag}]`,"DETECT");const delay=+$("captureDelay").value||0;$("nextCapture").textContent=`${delay}ms後`;const t=setTimeout(async()=>{timers.delete(range.name);$("nextCapture").textContent="撮影中...";try{const blobs=await captureAll();if(!blobs||!blobs.length)throw new Error("画像なし");const first=blobs[0].blob;if(!first||!first.size)throw new Error("データ空");const url=URL.createObjectURL(first);if(photos.length>=20){const old=photos.pop();if(old&&old.url)try{URL.revokeObjectURL(old.url)}catch{}}photos.unshift({id:Date.now(),url:url,tag:tag,timestamp:new Date().toLocaleTimeString("ja-JP"),info:`${range.name}(${Math.round(freq)}Hz)`});renderGallery();if(paused){$("nextCapture").textContent="停止中";return}const set=threads[tag]||{koua:"1",fumiya:"4"},targets=[];if($("kouaSend")?.checked&&set&&set.koua&&WEBHOOKS.koua){const u=getThreadUrl(WEBHOOKS.koua,set.koua);if(u)targets.push(["Koua",u,set.koua])}if($("fumiyaSend")?.checked&&set&&set.fumiya&&WEBHOOKS.fumiya){const u=getThreadUrl(WEBHOOKS.fumiya,set.fumiya);if(u)targets.push(["Fumiya",u,set.fumiya])}if(!targets.length){const d=$("webhookUrl").value.trim();if(d&&d.startsWith("http")){const u=getThreadUrl(d,"1");if(u)targets.push(["デフォルト",u,"1"])}}if(!targets.length){$("nextCapture").textContent="送信先未設定";return}await Promise.all(targets.map(([name,u,id])=>sendDiscord(blobs,range,freq,vol,`${tag}(${info})`,u,tag).then(()=>log(`Discord:${name}(スレッド${id})`,"DISCORD")).catch(e=>log(`Discord失敗(${name}):${e.message}`,"ERROR"))));$("nextCapture").textContent="待機中"}catch(e){log(`エラー:${e.message}`,"ERROR");$("nextCapture").textContent="エラー"}},delay);timers.set(range.name,t)}
+
+// ============================================================
+// レンダリング関数（簡略化）
+// ============================================================
+function renderRanges(){const l=$("rangeList");l.innerHTML=ranges.map((r,i)=>`<div class="range-row"><label>名前<input type="text" value="${esc(r.name)}" disabled></label><label>Low<input type="number" value="${r.low}" disabled></label><label>High<input type="number" value="${r.high}" disabled></label><button class="edit-range" data-i="${i}">編集</button><button class="danger delete-range" data-i="${i}">削除</button></div>`).join("");l.querySelectorAll(".edit-range").forEach(b=>b.onclick=()=>openRangeModal(+b.dataset.i));l.querySelectorAll(".delete-range").forEach(b=>b.onclick=()=>{const d=ranges.splice(+b.dataset.i,1)[0].name;seqs.forEach(s=>{if(s.first===d&&ranges[0])s.first=ranges[0].name;if(s.second===d&&ranges[0])s.second=ranges[0].name});renderRanges();renderSeqs();renderColors();renderThreads()})}
+function renderSeqs(){const l=$("seqList"),opts=arr=>arr.map(v=>`<option value="${esc(v.name||v)}">${esc(v.name||v)}</option>`).join("");l.innerHTML=seqs.map(s=>`<div class="seq-row" data-id="${s.id}"><label>タグ<select data-id="${s.id}" data-k="tag">${opts(tags)}</select></label><label>1st<select data-id="${s.id}" data-k="first">${opts(ranges)}</select></label><label>2nd<select data-id="${s.id}" data-k="second">${opts(ranges)}</select></label><label>秒<input type="number" data-id="${s.id}" data-k="windowSec" value="${s.windowSec}" min="1" max="60"></label><button class="danger delete-seq" data-id="${s.id}">削除</button></div>`).join("");seqs.forEach(s=>{const r=l.querySelector(`.seq-row[data-id="${s.id}"]`);if(r){r.querySelector('[data-k="tag"]').value=s.tag;r.querySelector('[data-k="first"]').value=s.first;r.querySelector('[data-k="second"]').value=s.second}});l.querySelectorAll("select,input").forEach(el=>el.onchange=()=>{const s=seqs.find(x=>x.id===el.dataset.id);if(s){s[el.dataset.k]=el.dataset.k==="windowSec"?(+el.value||1):el.value;updateSeqUI()}});l.querySelectorAll(".delete-seq").forEach(b=>b.onclick=()=>{seqs=seqs.filter(s=>s.id!==b.dataset.id);resetSeqs();renderSeqs()});updateSeqUI();updateGalleryFilter()}
+function renderThreads(){const l=$("tagThreadList");if(!l)return;l.innerHTML=tags.map(t=>{const k=threads[t]?.koua||"1",f=threads[t]?.fumiya||"4",et=t.replace(/'/g,"\\'");return`<div class="thread-row"><span class="tag-label">${esc(t)}</span><div class="channel-group"><span class="ch-label">Koua</span><select data-tag="${esc(t)}" data-channel="koua" onchange="threads['${et}'].koua=this.value; log('${esc(t)} Koua:'+this.value, 'SYSTEM')"><option value="${k}" selected>${k}</option></select></div><div class="channel-group"><span class="ch-label">Fumiya</span><select data-tag="${esc(t)}" data-channel="fumiya" onchange="threads['${et}'].fumiya=this.value; log('${esc(t)} Fumiya:'+this.value, 'SYSTEM')"><option value="${f}" selected>${f}</option></select></div><span class="status-badge active">✅ K${k}/F${f}</span></div>`}).join("")}
+function renderColors(){const l=$("tagColorList");if(!l)return;l.innerHTML=tags.map(t=>{const safeId=t.replace(/[^a-zA-Z0-9]/g,'_');const colorVal=colors[t]||"#38bdf8";return`<div style="display:flex;align-items:center;gap:8px"><span style="min-width:90px">${esc(t)}</span><input type="color" id="color_${safeId}" value="${colorVal}" onchange="colors['${t.replace(/'/g,"\\'")}']=this.value;document.getElementById('text_${safeId}').value=this.value" style="width:48px;height:32px;padding:0;border:0;cursor:pointer"><input type="text" id="text_${safeId}" value="${colorVal}" data-tag="${esc(t)}" onchange="if(/^#[0-9a-fA-F]{6}$/.test(this.value)){colors['${t.replace(/'/g,"\\'")}']=this.value;document.getElementById('color_${safeId}').value=this.value}" style="max-width:120px;font-family:monospace"></div>`}).join("")}
+function updateGalleryFilter(){const s=$("galleryFilter"),c=s.value;s.innerHTML=`<option value="ALL">すべて</option>`+tags.map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join("");s.value=c}
+function renderGallery(){const g=$("galleryGrid"),f=$("galleryFilter").value,lst=f==="ALL"?photos:photos.filter(p=>p.tag===f);if(!lst.length)return g.innerHTML=`<div class="muted" style="grid-column:1/-1;text-align:center;padding:20px">画像なし</div>`;g.innerHTML=lst.map((p,i)=>`<div class="gallery-item" data-i="${i}"><img src="${p.url}"><div class="gallery-item-tag">${esc(p.tag)}</div></div>`).join("");g.querySelectorAll(".gallery-item").forEach((item,idx)=>{item.onclick=()=>{const p=lst[idx];$("previewImage").src=p.url;$("previewInfo").textContent=`[${p.tag}] ${p.timestamp} - ${p.info}`;$("imageModal").style.display="grid"}})}
+$("galleryFilter").onchange=renderGallery;$("imageModalCloseBtn").onclick=$("imageModal").onclick=e=>{if(e.target===$("imageModalCloseBtn")||e.target===$("imageModal"))$("imageModal").style.display="none"};
+
+// ============================================================
+// モーダル制御
+// ============================================================
+function openRangeModal(i=null){editIdx=i;const isEdit=i!==null&&i>=0,item=isEdit?ranges[i]:{name:`音${String.fromCharCode(65+ranges.length)}`,low:1000+ranges.length*100,high:1050+ranges.length*100};$("modalTitle").textContent=isEdit?"編集":"追加";$("modalRangeName").value=item.name;$("modalRangeLow").value=item.low;$("modalRangeHigh").value=item.high;$("rangeModal").style.display="grid"}
+$("addRangeBtn").onclick=()=>openRangeModal(null);$("modalCancelBtn").onclick=()=>$("rangeModal").style.display="none";
+$("modalSubmitBtn").onclick=()=>{const n=$("modalRangeName").value.trim()||`音${ranges.length+1}`;let l=+$("modalRangeLow").value||0,h=+$("modalRangeHigh").value||0;if(l>h)[l,h]=[h,l];if(editIdx!==null&&editIdx>=0){const o=ranges[editIdx].name;ranges[editIdx]={name:n,low:l,high:h};if(o!==n)seqs.forEach(s=>{if(s.first===o)s.first=n;if(s.second===o)s.second=n})}else ranges.push({name:n,low:l,high:h});renderRanges();renderSeqs();$("rangeModal").style.display="none"};
+$("addTagBtn").onclick=()=>{$("modalTagName").value=`条件${tags.length+1}`;$("tagModal").style.display="grid"};
+$("tagModalCancelBtn").onclick=()=>$("tagModal").style.display="none";
+$("tagModalSubmitBtn").onclick=()=>{const t=$("modalTagName").value.trim();if(t&&!tags.includes(t)){tags.push(t);if(!colors[t])colors[t]="#38bdf8";if(!threads[t])threads[t]={koua:"1",fumiya:"4"};log(`タグ追加:${t}`,"SYSTEM");renderSeqs();renderColors();renderThreads();updateTestTags()}$("tagModal").style.display="none"};
+$("addSeqBtn").onclick=()=>{seqs.push({id:uid(),tag:tags[0]||"条件1",first:ranges[0]?.name||"",second:ranges[1]?.name||ranges[0]?.name||"",windowSec:5});renderSeqs()};
+$("discordPauseBtn").onclick=()=>{paused=!paused;$("discordPauseBtn").textContent=paused?"再開":"一時停止";$("discordState").textContent=paused?"送信:停止中":"送信:有効"};
+
+// ============================================================
+// テスト送信
+// ============================================================
+function updateTestTags(){const c=document.getElementById('testTagGroup');if(!c)return;c.innerHTML=tags.map(t=>`<label><input type="checkbox" class="test-tag" value="${esc(t)}" checked>${esc(t)}</label>`).join('')}
+function createBlackImg(){return new Promise(r=>{const c=document.createElement('canvas');c.width=640;c.height=480;const x=c.getContext('2d');x.fillStyle='#000';x.fillRect(0,0,640,480);x.fillStyle='#fff';x.font='40px sans-serif';x.textAlign='center';x.textBaseline='middle';x.fillText('🧪 TEST',320,220);x.font='20px sans-serif';x.fillText('テスト送信',320,290);c.toBlob(b=>{r(b)},'image/jpeg',.9)})}
+async function execTest(){const channels=[];document.querySelectorAll('.test-channel:checked').forEach(c=>channels.push(c.value));const tags2=[];document.querySelectorAll('.test-tag:checked').forEach(c=>tags2.push(c.value));if(!channels.length){alert('チャンネルを選択してください');return}if(!tags2.length){alert('タグを選択してください');return}const black=await createBlackImg();if(!black){log('画像生成失敗','ERROR');return}let ok=0,ng=0;for(const ch of channels){for(const tg of tags2){const s=threads[tg];if(!s){log(`⚠️ タグ "${tg}" のスレッド設定がありません。デフォルト値を使用します。`,"WARNING");const def={koua:"1",fumiya:"4"};const id=ch==='koua'?def.koua:def.fumiya;const url2=WEBHOOKS[ch];if(!url2||!id){log(`⚠️${ch}の${tg}設定なし`,'TEST');continue}const u=getThreadUrl(url2,id);if(!u){log(`⚠️${ch}のURL無効`,'TEST');continue}try{const dummy={name:'テスト'},blobs=[{blob:black,label:'テスト'}];log(`🧪${ch}→${tg}(スレッド${id})`,'TEST');await sendDiscord(blobs,dummy,440,50,`テスト(${ch}/${tg})`,u,tg);log(`✅${ch}→${tg}成功`,'TEST');ok++}catch(e){log(`❌${ch}→${tg}:${e.message}`,'ERROR');ng++}}else{const id=ch==='koua'?s.koua:s.fumiya;const url2=WEBHOOKS[ch];if(!url2||!id){log(`⚠️${ch}の${tg}設定なし`,'TEST');continue}const u=getThreadUrl(url2,id);if(!u){log(`⚠️${ch}のURL無効`,'TEST');continue}try{const dummy={name:'テスト'},blobs=[{blob:black,label:'テスト'}];log(`🧪${ch}→${tg}(スレッド${id})`,'TEST');await sendDiscord(blobs,dummy,440,50,`テスト(${ch}/${tg})`,u,tg);log(`✅${ch}→${tg}成功`,'TEST');ok++}catch(e){log(`❌${ch}→${tg}:${e.message}`,'ERROR');ng++}}}}log(`📊完了:成功${ok}/失敗${ng}`,'SYSTEM');alert(`完了！\n成功:${ok}\n失敗:${ng}`);document.getElementById('testModal').style.display='none'}
+
+// ============================================================
+// イベント登録
+// ============================================================
+$("startBtn").onclick=startSystem;
+$("stopBtn").onclick=stopSystem;
+$("switchCamBtn").onclick=switchCamera;
+$("testSendBtn").onclick=()=>{updateTestTags();document.getElementById('testModal').style.display='grid'};
+$("testModalCancelBtn").onclick=()=>document.getElementById('testModal').style.display='none';
+$("testModalSubmitBtn").onclick=execTest;
+document.getElementById('testModal').onclick=e=>{if(e.target===document.getElementById('testModal'))document.getElementById('testModal').style.display='none'};
+
+// ============================================================
+// 汎用関数
+// ============================================================
 function uid(){return"id_"+Date.now().toString(36)+"_"+Math.random().toString(36).substr(2,5)}
 function ts(){const d=new Date();return`[${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}:${d.getHours()}:${d.getMinutes()}:${String(d.getSeconds()).padStart(2,'0')}`}
 function log(m,t="INFO"){const e={time:new Date().toLocaleTimeString("ja-JP",{hour12:false}),type:t,message:m};logs.push(e);if(filter==="ALL"||filter===t)appendLog(e)}
@@ -343,343 +718,9 @@ bindToggle("seqToggleBtn","seqSectionBody","seqToggleStatusText");
 bindToggle("paramsToggleBtn","paramsSectionBody","paramsToggleStatusText");
 
 // ============================================================
-// レンダリング関数
-// ============================================================
-function renderRanges(){const l=$("rangeList");l.innerHTML=ranges.map((r,i)=>`<div class="range-row"><label>名前<input type="text" value="${esc(r.name)}" disabled></label><label>Low<input type="number" value="${r.low}" disabled></label><label>High<input type="number" value="${r.high}" disabled></label><button class="edit-range" data-i="${i}">編集</button><button class="danger delete-range" data-i="${i}">削除</button></div>`).join("");l.querySelectorAll(".edit-range").forEach(b=>b.onclick=()=>openRangeModal(+b.dataset.i));l.querySelectorAll(".delete-range").forEach(b=>b.onclick=()=>{const d=ranges.splice(+b.dataset.i,1)[0].name;seqs.forEach(s=>{if(s.first===d&&ranges[0])s.first=ranges[0].name;if(s.second===d&&ranges[0])s.second=ranges[0].name});renderRanges();renderSeqs();renderColors();renderThreads()})}
-
-function renderSeqs(){const l=$("seqList"),opts=arr=>arr.map(v=>`<option value="${esc(v.name||v)}">${esc(v.name||v)}</option>`).join("");l.innerHTML=seqs.map(s=>`<div class="seq-row" data-id="${s.id}"><label>タグ<select data-id="${s.id}" data-k="tag">${opts(tags)}</select></label><label>1st<select data-id="${s.id}" data-k="first">${opts(ranges)}</select></label><label>2nd<select data-id="${s.id}" data-k="second">${opts(ranges)}</select></label><label>秒<input type="number" data-id="${s.id}" data-k="windowSec" value="${s.windowSec}" min="1" max="60"></label><button class="danger delete-seq" data-id="${s.id}">削除</button></div>`).join("");seqs.forEach(s=>{const r=l.querySelector(`.seq-row[data-id="${s.id}"]`);if(r){r.querySelector('[data-k="tag"]').value=s.tag;r.querySelector('[data-k="first"]').value=s.first;r.querySelector('[data-k="second"]').value=s.second}});l.querySelectorAll("select,input").forEach(el=>el.onchange=()=>{const s=seqs.find(x=>x.id===el.dataset.id);if(s){s[el.dataset.k]=el.dataset.k==="windowSec"?(+el.value||1):el.value;updateSeqUI()}});l.querySelectorAll(".delete-seq").forEach(b=>b.onclick=()=>{seqs=seqs.filter(s=>s.id!==b.dataset.id);resetSeqs();renderSeqs()});updateSeqUI();updateGalleryFilter()}
-
-function renderThreads(){const l=$("tagThreadList");if(!l)return;l.innerHTML=tags.map(t=>{const k=threads[t]?.koua||"1",f=threads[t]?.fumiya||"4",et=t.replace(/'/g,"\\'");return`<div class="thread-row"><span class="tag-label">${esc(t)}</span><div class="channel-group"><span class="ch-label">Koua</span><select data-tag="${esc(t)}" data-channel="koua" onchange="threads['${et}'].koua=this.value; log('${esc(t)} Koua:'+this.value, 'SYSTEM')"><option value="${k}" selected>${k}</option></select></div><div class="channel-group"><span class="ch-label">Fumiya</span><select data-tag="${esc(t)}" data-channel="fumiya" onchange="threads['${et}'].fumiya=this.value; log('${esc(t)} Fumiya:'+this.value, 'SYSTEM')"><option value="${f}" selected>${f}</option></select></div><span class="status-badge active">✅ K${k}/F${f}</span></div>`}).join("")}
-
-function renderColors(){const l=$("tagColorList");if(!l)return;l.innerHTML=tags.map(t=>{const safeId=t.replace(/[^a-zA-Z0-9]/g,'_');const colorVal=colors[t]||"#38bdf8";return`<div style="display:flex;align-items:center;gap:8px"><span style="min-width:90px">${esc(t)}</span><input type="color" id="color_${safeId}" value="${colorVal}" onchange="colors['${t.replace(/'/g,"\\'")}']=this.value;document.getElementById('text_${safeId}').value=this.value" style="width:48px;height:32px;padding:0;border:0;cursor:pointer"><input type="text" id="text_${safeId}" value="${colorVal}" data-tag="${esc(t)}" onchange="if(/^#[0-9a-fA-F]{6}$/.test(this.value)){colors['${t.replace(/'/g,"\\'")}']=this.value;document.getElementById('color_${safeId}').value=this.value}" style="max-width:120px;font-family:monospace"></div>`}).join("")}
-
-function updateGalleryFilter(){const s=$("galleryFilter"),c=s.value;s.innerHTML=`<option value="ALL">すべて</option>`+tags.map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join("");s.value=c}
-function renderGallery(){const g=$("galleryGrid"),f=$("galleryFilter").value,lst=f==="ALL"?photos:photos.filter(p=>p.tag===f);if(!lst.length)return g.innerHTML=`<div class="muted" style="grid-column:1/-1;text-align:center;padding:20px">画像なし</div>`;g.innerHTML=lst.map((p,i)=>`<div class="gallery-item" data-i="${i}"><img src="${p.url}"><div class="gallery-item-tag">${esc(p.tag)}</div></div>`).join("");g.querySelectorAll(".gallery-item").forEach((item,idx)=>{item.onclick=()=>{const p=lst[idx];$("previewImage").src=p.url;$("previewInfo").textContent=`[${p.tag}] ${p.timestamp} - ${p.info}`;$("imageModal").style.display="grid"}})}
-$("galleryFilter").onchange=renderGallery;$("imageModalCloseBtn").onclick=$("imageModal").onclick=e=>{if(e.target===$("imageModalCloseBtn")||e.target===$("imageModal"))$("imageModal").style.display="none"};
-
-// モーダル制御
-function openRangeModal(i=null){editIdx=i;const isEdit=i!==null&&i>=0,item=isEdit?ranges[i]:{name:`音${String.fromCharCode(65+ranges.length)}`,low:1000+ranges.length*100,high:1050+ranges.length*100};$("modalTitle").textContent=isEdit?"編集":"追加";$("modalRangeName").value=item.name;$("modalRangeLow").value=item.low;$("modalRangeHigh").value=item.high;$("rangeModal").style.display="grid"}
-$("addRangeBtn").onclick=()=>openRangeModal(null);$("modalCancelBtn").onclick=()=>$("rangeModal").style.display="none";
-$("modalSubmitBtn").onclick=()=>{const n=$("modalRangeName").value.trim()||`音${ranges.length+1}`;let l=+$("modalRangeLow").value||0,h=+$("modalRangeHigh").value||0;if(l>h)[l,h]=[h,l];if(editIdx!==null&&editIdx>=0){const o=ranges[editIdx].name;ranges[editIdx]={name:n,low:l,high:h};if(o!==n)seqs.forEach(s=>{if(s.first===o)s.first=n;if(s.second===o)s.second=n})}else ranges.push({name:n,low:l,high:h});renderRanges();renderSeqs();$("rangeModal").style.display="none"};
-$("addTagBtn").onclick=()=>{$("modalTagName").value=`条件${tags.length+1}`;$("tagModal").style.display="grid"};
-$("tagModalCancelBtn").onclick=()=>$("tagModal").style.display="none";
-$("tagModalSubmitBtn").onclick=()=>{const t=$("modalTagName").value.trim();if(t&&!tags.includes(t)){tags.push(t);if(!colors[t])colors[t]="#38bdf8";if(!threads[t])threads[t]={koua:"1",fumiya:"4"};log(`タグ追加:${t}`,"SYSTEM");renderSeqs();renderColors();renderThreads();updateTestTags()}$("tagModal").style.display="none"};
-$("addSeqBtn").onclick=()=>{seqs.push({id:uid(),tag:tags[0]||"条件1",first:ranges[0]?.name||"",second:ranges[1]?.name||ranges[0]?.name||"",windowSec:5});renderSeqs()};
-$("discordPauseBtn").onclick=()=>{paused=!paused;$("discordPauseBtn").textContent=paused?"再開":"一時停止";$("discordState").textContent=paused?"送信:停止中":"送信:有効"};
-
-// 音声処理
-function getVol(d){let s=0;for(let i=0;i<d.length;i++){const v=(d[i]-128)/128;s+=v*v}const r=Math.sqrt(s/d.length);return r<=1e-6?0:Math.max(0,Math.min(100,20*Math.log10(r)+100))}
-function autoCorrelate(b,rate){let n=b.length,r=0;for(let i=0;i<n;i++)r+=b[i]*b[i];r=Math.sqrt(r/n);if(r<0.01)return-1;let a=0,c=n-1,t=0.05;for(let i=0;i<n/2;i++){if(Math.abs(b[i])<t){a=i;break}}for(let i=1;i<n/2;i++){if(Math.abs(b[n-i])<t){c=n-i;break}}b=b.slice(a,c);n=b.length;let corr=new Array(n).fill(0);for(let i=0;i<n;i++){for(let j=0;j<n-i;j++)corr[i]+=b[j]*b[j+i]}let d=0;while(corr[d]>corr[d+1])d++;let max=-1,pos=-1;for(let i=d;i<n;i++){if(corr[i]>max){max=corr[i];pos=i}}let T=pos,x1=corr[T-1]||0,x2=corr[T],x3=corr[T+1]||0;let A=(x1+x3-2*x2)/2,B=(x3-x1)/2;if(A)T-=B/(2*A);return rate/T}
-
-// シーケンス制御
-function resetSeqs(){seqStates.forEach(s=>clearTimeout(s.timer));seqStates=[];updateSeqUI()}
-function updateSeqUI(){$("seqStatusList").innerHTML=seqStates.length?seqStates.map(s=>{const q=seqs.find(x=>x.id===s.seqId);return q?`<div style="color:#f59e0b">⏳ [${esc(q.tag)}] 「${esc(s.firstName)}」検出中 ➔ 「${esc(q.second)}」待機</div>`:""}).join(""):'<span style="color:#94a3b8">待機中</span>'}
-
-// ============================================================
-// ★ カメラ制御（完全修正版 - 映像表示に特化）
-// ============================================================
-
-// 映像を強制的に表示する関数
-function forceShowVideo(videoEl) {
-    if (!videoEl) return;
-    videoEl.style.display = 'block';
-    videoEl.style.visibility = 'visible';
-    videoEl.style.opacity = '1';
-    videoEl.style.width = '100%';
-    videoEl.style.height = '100%';
-    videoEl.style.objectFit = 'cover';
-    // ローディングを非表示
-    const loading = document.getElementById('videoLoading');
-    if (loading) loading.style.display = 'none';
-    const noCam = document.getElementById('noCamera');
-    if (noCam) noCam.style.display = 'none';
-    const panel = document.getElementById('cameraPanel');
-    if (panel) panel.classList.add('video-loaded');
-}
-
-// video要素にストリームを設定して表示する
-function setupVideoStream(videoEl, stream) {
-    return new Promise((resolve, reject) => {
-        try {
-            // 既存のsrcObjectをクリア
-            if (videoEl.srcObject) {
-                try {
-                    const tracks = videoEl.srcObject.getTracks();
-                    tracks.forEach(t => t.stop());
-                } catch(e) {}
-                videoEl.srcObject = null;
-            }
-            
-            // ストリームを設定
-            videoEl.srcObject = stream;
-            videoEl.autoplay = true;
-            videoEl.playsInline = true;
-            videoEl.muted = true;
-            
-            // 強制表示
-            forceShowVideo(videoEl);
-            
-            // 再生を試行
-            videoEl.play().then(() => {
-                console.log('✅ 再生開始成功');
-                forceShowVideo(videoEl);
-                resolve();
-            }).catch((err) => {
-                console.warn('⚠️ 再生開始エラー:', err);
-                // エラーでも表示を維持
-                forceShowVideo(videoEl);
-                resolve(); // エラーでも解決して続行
-            });
-            
-            // ロード完了を待つ
-            const onLoaded = () => {
-                console.log('✅ 映像読み込み完了');
-                forceShowVideo(videoEl);
-                resolve();
-            };
-            
-            videoEl.addEventListener('loadedmetadata', onLoaded, { once: true });
-            videoEl.addEventListener('loadeddata', onLoaded, { once: true });
-            videoEl.addEventListener('canplay', onLoaded, { once: true });
-            
-            // タイムアウト（3秒で強制完了）
-            setTimeout(() => {
-                console.log('⏰ タイムアウト: 強制表示');
-                forceShowVideo(videoEl);
-                resolve();
-            }, 3000);
-            
-        } catch (err) {
-            console.error('❌ setupVideoStream エラー:', err);
-            // エラーでも表示を維持
-            forceShowVideo(videoEl);
-            resolve();
-        }
-    });
-}
-
-async function updateCams() {
-    try {
-        log("カメラスキャン...", "SYSTEM");
-        // カメラ権限を取得
-        try {
-            const facing = useFrontCamera ? "user" : "environment";
-            const s = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: facing, width: { ideal: 640 }, height: { ideal: 480 } }
-            });
-            s.getTracks().forEach(t => t.stop());
-            log("カメラ権限OK", "SYSTEM");
-        } catch (e) {
-            try {
-                const s = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: "environment", width: { ideal: 640 }, height: { ideal: 480 } }
-                });
-                s.getTracks().forEach(t => t.stop());
-                useFrontCamera = false;
-                log("カメラ権限OK（背面）", "SYSTEM");
-            } catch (e2) {
-                log("⚠️ カメラ権限が拒否されました", "ERROR");
-            }
-        }
-        const devs = await navigator.mediaDevices.enumerateDevices();
-        vDevices = devs.filter(d => d.kind === "videoinput");
-        log(`カメラ${vDevices.length}台検出`, "SYSTEM");
-        const btn = $("switchCamBtn"), badge = document.getElementById("cameraCount");
-        if (vDevices.length > 1) {
-            btn.style.display = "flex";
-            if (badge) { badge.textContent = vDevices.length; badge.style.display = "flex"; }
-        } else {
-            btn.style.display = "none";
-            if (badge) badge.style.display = "none";
-        }
-        return vDevices;
-    } catch (e) {
-        log("カメラエラー: " + e.message, "ERROR");
-        $("switchCamBtn").style.display = "none";
-        return [];
-    }
-}
-
-async function startSystem(id = null) {
-    if (running && !id) return;
-    try {
-        log("起動...", "SYSTEM");
-        $("statusMain").textContent = "起動中...";
-        
-        // 既存のストリームを停止
-        await stopStreams();
-        
-        // カメラデバイスをスキャン
-        await updateCams();
-        streams = [];
-        
-        if (vDevices.length === 0) {
-            log("⚠️ カメラなし", "WARNING");
-            document.getElementById('noCamera').style.display = 'grid';
-            document.getElementById('noCamera').textContent = '📷 カメラが見つかりません';
-            $("statusMain").textContent = "カメラなし";
-            return;
-        }
-        
-        const videoEl = $("video");
-        const loadingEl = document.getElementById('videoLoading');
-        
-        // 各カメラを起動（最初の1台だけでOK）
-        let cameraStarted = false;
-        for (let i = 0; i < vDevices.length; i++) {
-            const d = vDevices[i];
-            try {
-                const constraints = {
-                    video: {
-                        deviceId: { exact: d.deviceId },
-                        width: { ideal: 640, max: 1280 },
-                        height: { ideal: 480, max: 720 }
-                    },
-                    audio: i === 0 ? { echoCancellation: true, noiseSuppression: true } : false
-                };
-                
-                log(`カメラ${i+1}起動中...`, "SYSTEM");
-                const s = await navigator.mediaDevices.getUserMedia(constraints);
-                
-                // ★ 重要: メインのvideo要素に直接ストリームを設定
-                if (!cameraStarted) {
-                    await setupVideoStream(videoEl, s);
-                    cameraStarted = true;
-                    
-                    // 表示を強制
-                    videoEl.style.display = 'block';
-                    videoEl.style.visibility = 'visible';
-                    videoEl.style.opacity = '1';
-                    if (loadingEl) loadingEl.style.display = 'none';
-                    document.getElementById('noCamera').style.display = 'none';
-                    
-                    log("✅ メインカメラ起動成功", "SYSTEM");
-                }
-                
-                streams.push({ stream: s, videoEl: videoEl, label: d.label || `カメラ${i+1}` });
-                
-            } catch (err) {
-                log(`⚠️ カメラ${i+1}起動失敗: ${err.message}`, "WARNING");
-            }
-        }
-        
-        if (!streams.length) {
-            log("⚠️ 全てのカメラ起動に失敗しました", "ERROR");
-            document.getElementById('noCamera').style.display = 'grid';
-            document.getElementById('noCamera').textContent = '📷 カメラが使用できません';
-            $("statusMain").textContent = "カメラエラー";
-            return;
-        }
-        
-        // ★ 最終確認: video要素が表示されているか
-        if (videoEl.srcObject) {
-            forceShowVideo(videoEl);
-        } else {
-            // フォールバック: ストリームが設定されていない場合
-            if (streams.length > 0 && streams[0].stream) {
-                await setupVideoStream(videoEl, streams[0].stream);
-                forceShowVideo(videoEl);
-            }
-        }
-        
-        // 音声処理
-        const audio = streams.find(c => c.stream.getAudioTracks().length > 0)?.stream;
-        if (audio) {
-            if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
-            await actx.resume();
-            if (src) try { src.disconnect(); } catch {}
-            src = actx.createMediaStreamSource(audio);
-            if (!analyser) {
-                analyser = actx.createAnalyser();
-                analyser.fftSize = 2048;
-                analyser.smoothingTimeConstant = 0.5;
-            }
-            src.connect(analyser);
-            log("音声処理OK", "SYSTEM");
-        }
-        
-        running = true;
-        $("startBtn").disabled = true;
-        $("stopBtn").disabled = false;
-        $("statusMain").textContent = "実行中";
-        analyze();
-        log("✅ システム起動完了", "SYSTEM");
-        
-    } catch (e) {
-        log("起動失敗: " + e.message, "ERROR");
-        console.error(e);
-        stopSys(false);
-    }
-}
-
-async function stopStreams() {
-    streams.forEach(i => {
-        if (i.stream) i.stream.getTracks().forEach(t => t.stop());
-        if (i.videoEl && i.videoEl !== $("video")) i.videoEl.remove();
-    });
-    streams = [];
-    // video要素をクリア
-    const videoEl = $("video");
-    if (videoEl) {
-        videoEl.srcObject = null;
-        videoEl.style.display = 'none';
-    }
-}
-
-function stopSys(w = true) {
-    running = false;
-    if (raf) cancelAnimationFrame(raf);
-    resetSeqs();
-    timers.forEach(clearTimeout);
-    timers.clear();
-    [src, analyser].forEach(n => { try { n?.disconnect(); } catch {} });
-    if (actx) try { actx.close(); } catch {}
-    stopStreams();
-    src = analyser = actx = null;
-    $("video").srcObject = null;
-    document.getElementById('noCamera').style.display = 'grid';
-    document.getElementById('noCamera').textContent = '📷 停止中';
-    $("switchCamBtn").style.display = "none";
-    $("startBtn").disabled = false;
-    $("stopBtn").disabled = true;
-    $("statusMain").textContent = "停止中";
-    if (w) log("停止", "SYSTEM");
-}
-
-// カメラ切り替え
-$("switchCamBtn").onclick = async () => {
-    if (!vDevices.length) { log("切替可能なカメラがありません", "ERROR"); return; }
-    useFrontCamera = !useFrontCamera;
-    log(`🔄 カメラ切替: ${useFrontCamera ? "前面" : "背面"}カメラ`, "SYSTEM");
-    const loadingEl = document.getElementById('videoLoading');
-    if (loadingEl) { loadingEl.style.display = "flex"; loadingEl.textContent = "📷 カメラ切替中..."; }
-    await startSystem();
-};
-
-// 音声解析
-function analyze(){if(!running||!analyser||!actx)return;const f=new Float32Array(analyser.fftSize),u=new Uint8Array(analyser.fftSize);analyser.getFloatTimeDomainData(f);analyser.getByteTimeDomainData(u);const vol=getVol(u),pitch=vol>=+$("volumeThreshold").value&&actx?autoCorrelate(f,actx.sampleRate):-1,peak=pitch>0?pitch:0;$("frequency").textContent=Math.round(peak);$("volume").textContent=vol.toFixed(1);$("volumeBar").style.width=vol+"%";if(vol>=+$("volumeThreshold").value&&peak>0){const matches=ranges.filter(r=>peak>=r.low&&peak<=r.high);matches.forEach(r=>{if($("seqEnable").checked){seqs.forEach(s=>{const state=seqStates.find(x=>x.seqId===s.id),tag=s.tag||"条件";if(r.name===s.first&&!state){const t=setTimeout(()=>{log(`[${tag}] タイムアウト`,"SEQ");seqStates=seqStates.filter(x=>x.seqId!==s.id);updateSeqUI()},s.windowSec*1000);seqStates.push({seqId:s.id,timer:t,firstName:s.first});log(`[${tag}] トリガー:${s.first}`,"SEQ");updateSeqUI()}else if(r.name===s.second&&state){log(`[${tag}] 成立:${s.second}`,"SEQ");clearTimeout(state.timer);seqStates=seqStates.filter(x=>x.seqId!==s.id);updateSeqUI();trigger(r,peak,vol,tag,`${s.first}➔${s.second}`)}})}else trigger(r,peak,vol,"単体検出","単体")});if(matches.length){const names=matches.map(r=>r.name).join(", ");$("statusMain").textContent=`${names} 検出中`;$("lastDetected").textContent=`${names} (${Math.round(peak)}Hz)`}}raf=requestAnimationFrame(analyze)}
-
-// 撮影・送信
-function getThreadUrl(base,id){if(!base||!base.startsWith("http"))return null;const sep=base.includes("?")?"&":"?";return base+sep+"thread_id="+id}
-async function captureAll(){if(!streams.length)throw new Error("カメラなし");const p=streams.map(i=>new Promise(r=>{try{const v=i.videoEl;if(!v||v.readyState<2){r(null);return}const w=v.videoWidth||640,h=v.videoHeight||480,c=document.createElement("canvas");c.width=w;c.height=h;c.getContext("2d").drawImage(v,0,0,w,h);c.toBlob(b=>{r({blob:b,label:i.label||"カメラ"})},"image/jpeg",.85)}catch(e){console.error(e);r(null)}}));const res=await Promise.all(p);return res.filter(r=>r!==null&&r.blob!==null&&r.blob.size>0)}
-async function sendDiscord(blobs,range,freq,vol,info,url,tag){const t=ts(),tagColor=colors[tag]||"#38bdf8",hex=tagColor.replace("#",""),color=parseInt(hex,16)||0x38bdf8,form=new FormData(),payload={embeds:[{title:"📷 音声検知通知",color,fields:[{name:"時刻",value:t},{name:"タグ",value:tag},{name:"条件",value:info},{name:"音域",value:range.name},{name:"周波数",value:`${Math.round(freq)}Hz`},{name:"音量",value:`${vol.toFixed(1)}dB`},{name:"カメラ数",value:`${blobs.length}台`}]}]};form.append("payload_json",JSON.stringify(payload));blobs.forEach((item,i)=>{if(item&&item.blob&&item.blob.size>0)form.append(`files[${i}]`,item.blob,`cam_${i+1}_${Date.now()}.jpg`)});const res=await fetch(url,{method:"POST",body:form});if(!res.ok)throw new Error(`HTTP ${res.status}`);log(`Discord送信OK(${blobs.length}台)`,"DISCORD")}
-async function trigger(range,freq,vol,tag,info){const now=Date.now(),cd=+$("cooldown").value||0;if(now-(lastTrigger.get(range.name)||0)<cd||timers.has(range.name))return;lastTrigger.set(range.name,now);log(`トリガー:${range.name}(${Math.round(freq)}Hz/${vol.toFixed(1)}dB)[${tag}]`,"DETECT");const delay=+$("captureDelay").value||0;$("nextCapture").textContent=`${delay}ms後`;const t=setTimeout(async()=>{timers.delete(range.name);$("nextCapture").textContent="撮影中...";try{const blobs=await captureAll();if(!blobs||!blobs.length)throw new Error("画像なし");const first=blobs[0].blob;if(!first||!first.size)throw new Error("データ空");const url=URL.createObjectURL(first);if(photos.length>=20){const old=photos.pop();if(old&&old.url)try{URL.revokeObjectURL(old.url)}catch{}}photos.unshift({id:Date.now(),url:url,tag:tag,timestamp:new Date().toLocaleTimeString("ja-JP"),info:`${range.name}(${Math.round(freq)}Hz)`});renderGallery();if(paused){$("nextCapture").textContent="停止中";return}const set=threads[tag]||{koua:"1",fumiya:"4"},targets=[];if($("kouaSend")?.checked&&set&&set.koua&&WEBHOOKS.koua){const u=getThreadUrl(WEBHOOKS.koua,set.koua);if(u)targets.push(["Koua",u,set.koua])}if($("fumiyaSend")?.checked&&set&&set.fumiya&&WEBHOOKS.fumiya){const u=getThreadUrl(WEBHOOKS.fumiya,set.fumiya);if(u)targets.push(["Fumiya",u,set.fumiya])}if(!targets.length){const d=$("webhookUrl").value.trim();if(d&&d.startsWith("http")){const u=getThreadUrl(d,"1");if(u)targets.push(["デフォルト",u,"1"])}}if(!targets.length){$("nextCapture").textContent="送信先未設定";return}await Promise.all(targets.map(([name,u,id])=>sendDiscord(blobs,range,freq,vol,`${tag}(${info})`,u,tag).then(()=>log(`Discord:${name}(スレッド${id})`,"DISCORD")).catch(e=>log(`Discord失敗(${name}):${e.message}`,"ERROR"))));$("nextCapture").textContent="待機中"}catch(e){log(`エラー:${e.message}`,"ERROR");$("nextCapture").textContent="エラー"}},delay);timers.set(range.name,t)}
-
-// テスト送信
-function updateTestTags(){const c=document.getElementById('testTagGroup');if(!c)return;c.innerHTML=tags.map(t=>`<label><input type="checkbox" class="test-tag" value="${esc(t)}" checked>${esc(t)}</label>`).join('')}
-function createBlackImg(){return new Promise(r=>{const c=document.createElement('canvas');c.width=640;c.height=480;const x=c.getContext('2d');x.fillStyle='#000';x.fillRect(0,0,640,480);x.fillStyle='#fff';x.font='40px sans-serif';x.textAlign='center';x.textBaseline='middle';x.fillText('🧪 TEST',320,220);x.font='20px sans-serif';x.fillText('テスト送信',320,290);c.toBlob(b=>{r(b)},'image/jpeg',.9)})}
-async function execTest(){const channels=[];document.querySelectorAll('.test-channel:checked').forEach(c=>channels.push(c.value));const tags2=[];document.querySelectorAll('.test-tag:checked').forEach(c=>tags2.push(c.value));if(!channels.length){alert('チャンネルを選択してください');return}if(!tags2.length){alert('タグを選択してください');return}const black=await createBlackImg();if(!black){log('画像生成失敗','ERROR');return}let ok=0,ng=0;for(const ch of channels){for(const tg of tags2){const s=threads[tg];if(!s){log(`⚠️ タグ "${tg}" のスレッド設定がありません。デフォルト値を使用します。`,"WARNING");const def={koua:"1",fumiya:"4"};const id=ch==='koua'?def.koua:def.fumiya;const url2=WEBHOOKS[ch];if(!url2||!id){log(`⚠️${ch}の${tg}設定なし`,'TEST');continue}const u=getThreadUrl(url2,id);if(!u){log(`⚠️${ch}のURL無効`,'TEST');continue}try{const dummy={name:'テスト'},blobs=[{blob:black,label:'テスト'}];log(`🧪${ch}→${tg}(スレッド${id})`,'TEST');await sendDiscord(blobs,dummy,440,50,`テスト(${ch}/${tg})`,u,tg);log(`✅${ch}→${tg}成功`,'TEST');ok++}catch(e){log(`❌${ch}→${tg}:${e.message}`,'ERROR');ng++}}else{const id=ch==='koua'?s.koua:s.fumiya;const url2=WEBHOOKS[ch];if(!url2||!id){log(`⚠️${ch}の${tg}設定なし`,'TEST');continue}const u=getThreadUrl(url2,id);if(!u){log(`⚠️${ch}のURL無効`,'TEST');continue}try{const dummy={name:'テスト'},blobs=[{blob:black,label:'テスト'}];log(`🧪${ch}→${tg}(スレッド${id})`,'TEST');await sendDiscord(blobs,dummy,440,50,`テスト(${ch}/${tg})`,u,tg);log(`✅${ch}→${tg}成功`,'TEST');ok++}catch(e){log(`❌${ch}→${tg}:${e.message}`,'ERROR');ng++}}}}log(`📊完了:成功${ok}/失敗${ng}`,'SYSTEM');alert(`完了！\n成功:${ok}\n失敗:${ng}`);document.getElementById('testModal').style.display='none'}
-
-// イベント登録
-$("startBtn").onclick=()=>startSystem();
-$("stopBtn").onclick=()=>stopSys(true);
-$("testSendBtn").onclick=()=>{updateTestTags();document.getElementById('testModal').style.display='grid'};
-$("testModalCancelBtn").onclick=()=>document.getElementById('testModal').style.display='none';
-$("testModalSubmitBtn").onclick=execTest;
-document.getElementById('testModal').onclick=e=>{if(e.target===document.getElementById('testModal'))document.getElementById('testModal').style.display='none'};
-
 // Hz検査
-$("execHzBtn").onclick=()=>{if(running)stopSys(false);$("mainApp").style.display="none";const root=document.createElement("div");root.id="hz2-root";root.innerHTML=`<div id="info-container"><button id="hz2-back-btn" class="back-btn">⬅戻る</button><div id="hz2-display-area"><div>CURRENT FREQUENCY</div><span id="hz2-hz-val" class="hz-display">0</span><span class="hz-unit">Hz</span><span id="hz2-pause-badge" class="pause-badge">PAUSED</span></div><span class="pause-hint">(クリック/Spaceで一時停止)</span></div><div id="log-container"><div id="log-header" class="log-header"><span class="log-header-title">FREQUENCY LOGS</span><div class="log-controls"><button id="clear-log-btn" class="action-btn">クリア</button><button id="toggle-log-btn" class="action-btn">━</button></div></div><div class="log-body"><ul id="log-list"></ul></div></div><div id="tooltip"></div><div id="controls-container"><div class="control-group"><label>感度:<span id="threshold-val">0.0150</span><input type="range" id="threshold-slider" min="0.0001" max="0.05" step="0.0005" value="0.015"></label></div><div class="control-group"><label>HPF:<span id="filter-val">80Hz</span><input type="range" id="filter-slider" min="0" max="500" step="10" value="80"></label></div><div class="control-group"><label>最大:<span id="maxhz-val">3000Hz</span><input type="range" id="maxhz-slider" min="500" max="5000" step="100" value="3000"></label></div></div><canvas id="visualizer"></canvas>`;document.body.appendChild(root);initHz(root);log("Hz検査起動","SYSTEM")};
+// ============================================================
+$("execHzBtn").onclick=()=>{if(running)stopSystem();$("mainApp").style.display="none";const root=document.createElement("div");root.id="hz2-root";root.innerHTML=`<div id="info-container"><button id="hz2-back-btn" class="back-btn">⬅戻る</button><div id="hz2-display-area"><div>CURRENT FREQUENCY</div><span id="hz2-hz-val" class="hz-display">0</span><span class="hz-unit">Hz</span><span id="hz2-pause-badge" class="pause-badge">PAUSED</span></div><span class="pause-hint">(クリック/Spaceで一時停止)</span></div><div id="log-container"><div id="log-header" class="log-header"><span class="log-header-title">FREQUENCY LOGS</span><div class="log-controls"><button id="clear-log-btn" class="action-btn">クリア</button><button id="toggle-log-btn" class="action-btn">━</button></div></div><div class="log-body"><ul id="log-list"></ul></div></div><div id="tooltip"></div><div id="controls-container"><div class="control-group"><label>感度:<span id="threshold-val">0.0150</span><input type="range" id="threshold-slider" min="0.0001" max="0.05" step="0.0005" value="0.015"></label></div><div class="control-group"><label>HPF:<span id="filter-val">80Hz</span><input type="range" id="filter-slider" min="0" max="500" step="10" value="80"></label></div><div class="control-group"><label>最大:<span id="maxhz-val">3000Hz</span><input type="range" id="maxhz-slider" min="500" max="5000" step="100" value="3000"></label></div></div><canvas id="visualizer"></canvas>`;document.body.appendChild(root);initHz(root);log("Hz検査起動","SYSTEM")};
 function initHz(root){const c=root.querySelector('#visualizer'),ctx=c.getContext('2d'),hz=root.querySelector('#hz2-hz-val'),badge=root.querySelector('#hz2-pause-badge'),back=root.querySelector('#hz2-back-btn'),logC=root.querySelector('#log-container'),logH=root.querySelector('#log-header'),tog=root.querySelector('#toggle-log-btn'),list=root.querySelector('#log-list'),clear=root.querySelector('#clear-log-btn'),tip=root.querySelector('#tooltip'),thS=root.querySelector('#threshold-slider'),thV=root.querySelector('#threshold-val'),fS=root.querySelector('#filter-slider'),fV=root.querySelector('#filter-val'),mS=root.querySelector('#maxhz-slider'),mV=root.querySelector('#maxhz-val');let actx,anal,filter,data,history=[],paused2=false,mouseX=null,mouseY=null,drag=false,dup=false,rmsTh=0.015,maxHz=3000,cut=80,lastHz=null,dragLog=false,offX=0,offY=0,raf2=null,stream=null;function toggleP(){paused2=!paused2;badge.classList.toggle('active',paused2);if(!paused2)draw()}document.addEventListener('keydown',e=>{if(e.code==='Space'&&e.target.tagName!=='INPUT'){e.preventDefault();toggleP()}});logH.onmousedown=e=>{if(e.target.tagName==='BUTTON')return;dragLog=true;const r=logC.getBoundingClientRect();offX=e.clientX-r.left;offY=e.clientY-r.top};const mm=e=>{if(!dragLog)return;logC.style.right='auto';logC.style.left=e.clientX-offX+'px';logC.style.top=e.clientY-offY+'px'},mu=()=>{dragLog=false};window.addEventListener('mousemove',mm);window.addEventListener('mouseup',mu);tog.onclick=()=>{logC.classList.toggle('minimized');tog.textContent=logC.classList.contains('minimized')?'❏':'━'};thS.oninput=e=>{rmsTh=parseFloat(e.target.value);thV.textContent=rmsTh.toFixed(4)};fS.oninput=e=>{cut=parseFloat(e.target.value);fV.textContent=cut+'Hz';if(filter)filter.frequency.value=cut};mS.oninput=e=>{maxHz=parseInt(e.target.value,10);mV.textContent=maxHz+'Hz';if(paused2)drawS()};clear.onclick=()=>{list.innerHTML='';lastHz=null};c.onmousedown=e=>{drag=true;upd(e)};c.onclick=e=>{if(e.target===c)toggleP()};c.onmousemove=e=>upd(e);window.addEventListener('mouseup',()=>{drag=false});c.onmouseleave=()=>{if(!drag){mouseX=mouseY=null;tip.style.display='none';if(paused2)drawS()}};function upd(e){const r=c.getBoundingClientRect();mouseX=e.clientX-r.left;mouseY=e.clientY-r.top;if(paused2||drag)drawS()}function resize(){c.width=window.innerWidth;c.height=window.innerHeight;if(paused2)drawS()}window.addEventListener('resize',resize);resize();async function startHz(){actx=new(window.AudioContext||window.webkitAudioContext)();stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});const src=actx.createMediaStreamSource(stream);filter=actx.createBiquadFilter();filter.type='highpass';filter.frequency.value=cut;anal=actx.createAnalyser();anal.fftSize=2048;src.connect(filter);filter.connect(anal);data=new Float32Array(anal.fftSize);draw()}startHz();back.onclick=()=>{if(raf2)cancelAnimationFrame(raf2);if(stream)stream.getTracks().forEach(t=>t.stop());if(actx)actx.close();window.removeEventListener('keydown',toggleP);window.removeEventListener('mousemove',mm);window.removeEventListener('mouseup',mu);window.removeEventListener('resize',resize);root.remove();$("mainApp").style.display="grid";log("戻りました","SYSTEM");startSystem()};function addLog(m){const li=document.createElement('li');li.textContent=`[${new Date().toTimeString().split(' ')[0]}] ${m}`;list.insertBefore(li,list.firstChild);if(list.children.length>50)list.removeChild(list.lastChild)}function drawS(){ctx.fillStyle='#0d1117';ctx.fillRect(0,0,c.width,c.height);const cy=c.height/2;ctx.strokeStyle='#30363d';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(0,cy);ctx.lineTo(c.width,cy);ctx.stroke();ctx.fillStyle='#8b949e';ctx.font='12px monospace';const step=maxHz>2000?500:200;for(let hz=step;hz<=maxHz;hz+=step){let y=cy-(hz/maxHz)*cy;ctx.strokeStyle='#21262d';ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(c.width,y);ctx.stroke()}ctx.beginPath();ctx.lineWidth=3;ctx.strokeStyle=dup?'#ff5555':'#58a6ff';for(let x=0;x<history.length;x++){const sx=c.width-x,sy=cy-(history[x]/maxHz)*cy;if(x===0)ctx.moveTo(sx,sy);else ctx.lineTo(sx,sy)}ctx.stroke();if(mouseX!==null&&history.length>0){const idx=Math.round(c.width-mouseX);if(idx>=0&&idx<history.length){const ph=history[idx],py=cy-(ph/maxHz)*cy;ctx.strokeStyle='#f2994a';ctx.lineWidth=1;ctx.setLineDash([4,4]);ctx.beginPath();ctx.moveTo(mouseX,0);ctx.lineTo(mouseX,c.height);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle='#f2994a';ctx.beginPath();ctx.arc(mouseX,py,6,0,Math.PI*2);ctx.fill();tip.style.display='block';tip.style.left=mouseX+15+'px';tip.style.top=py-30+'px';tip.innerHTML=`<div><strong>${Math.round(ph)}Hz</strong></div><div style="color:#8b949e;font-size:.75rem">${(idx*(1000/60)/1000).toFixed(1)}秒前</div>`}}}function draw(){if(paused2)return;anal.getFloatTimeDomainData(data);const current=autoCorrelate(data,actx.sampleRate);let pitch=(current!==-1&&current>0&&current<=maxHz)?current:0;hz.textContent=Math.round(pitch);history.unshift(pitch);if(history.length>c.width)history.pop();const r=Math.round(pitch);if(r>0){const cnt=history.filter(h=>Math.round(h)===r).length;if(cnt>=3){dup=true;hz.classList.add('highlight');if(lastHz!==r){addLog(`Detected:${r}Hz(${cnt}times)`);lastHz=r}}else{dup=false;hz.classList.remove('highlight');if(cnt<2)lastHz=null}}else{dup=false;hz.classList.remove('highlight');lastHz=null}drawS();raf2=requestAnimationFrame(draw)}}
 
 // ============================================================
