@@ -11,11 +11,12 @@
 .top-left{grid-column:1;border-radius:10px;padding:6px;display:flex}
 .start-buttons{width:100%;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap}
 .top-title{grid-column:2;border-radius:10px;padding:12px 18px;display:flex;align-items:center;justify-content:center;font-size:clamp(16px,2.2vw,24px);font-weight:800}
-.camera{grid-column:1;min-height:240px;background:#0a0a0a;position:relative;display:flex;align-items:center;justify-content:center;border-radius:18px;overflow:hidden}
-video{width:100%;height:100%;object-fit:cover;background:#000;display:block;transform:scaleX(-1)}
+.camera{grid-column:1;min-height:260px;background:#0a0a0a;position:relative;display:flex;align-items:center;justify-content:center;border-radius:18px;overflow:hidden}
+video{width:100%;height:100%;object-fit:cover;background:#111;display:block}
+#videoPreview{width:100%;height:100%;object-fit:cover;background:#111;display:none}
 .video-loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#94a3b8;z-index:5;font-size:14px;background:rgba(0,0,0,0.7);pointer-events:none}
 .video-loaded .video-loading{display:none}
-.no-camera{position:absolute;inset:0;display:grid;place-items:center;color:#94a3b8;padding:25px;pointer-events:none;font-size:14px;z-index:5}
+.no-camera{position:absolute;inset:0;display:none;place-items:center;color:#94a3b8;padding:25px;pointer-events:none;font-size:14px;z-index:5;background:rgba(0,0,0,0.8)}
 .camera-switch-btn{position:absolute;bottom:12px;right:12px;z-index:10;background:rgba(15,23,42,0.85);border:2px solid rgba(56,189,248,0.6);backdrop-filter:blur(4px);border-radius:50%;width:48px;height:48px;display:none;align-items:center;justify-content:center;font-size:22px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.6);transition:transform .15s,background .15s;color:#fff}
 .camera-switch-btn:hover{transform:scale(1.1);background:rgba(56,189,248,0.8)}
 .camera-switch-btn .camera-count{position:absolute;top:-6px;right:-6px;background:#ef4444;color:#fff;font-size:10px;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-weight:bold}
@@ -184,8 +185,9 @@ button:disabled{opacity:.3;cursor:not-allowed}
     <button id="testSendBtn" class="test-btn">🧪 テスト送信</button>
   </div></section>
   <section class="panel top-title">"DiscordMessaging"</section>
-  <section class="panel camera">
+  <section class="panel camera" id="cameraPanel">
     <video id="video" autoplay playsinline muted></video>
+    <canvas id="videoPreview" style="display:none;"></canvas>
     <div class="video-loading" id="videoLoading">📷 カメラを起動中...</div>
     <div id="noCamera" class="no-camera">📷 カメラが使用できません</div>
     <button id="switchCamBtn" class="camera-switch-btn" title="カメラ切り替え">↺<span class="camera-count" id="cameraCount">0</span></button>
@@ -374,240 +376,284 @@ function resetSeqs(){seqStates.forEach(s=>clearTimeout(s.timer));seqStates=[];up
 function updateSeqUI(){$("seqStatusList").innerHTML=seqStates.length?seqStates.map(s=>{const q=seqs.find(x=>x.id===s.seqId);return q?`<div style="color:#f59e0b">⏳ [${esc(q.tag)}] 「${esc(s.firstName)}」検出中 ➔ 「${esc(q.second)}」待機</div>`:""}).join(""):'<span style="color:#94a3b8">待機中</span>'}
 
 // ============================================================
-// ★ カメラ制御（スマートフォン最適化）
+// ★ カメラ制御（完全修正版 - 映像表示に特化）
 // ============================================================
 
-function setupVideoElement(videoEl, stream) {
-  return new Promise((resolve, reject) => {
-    try {
-      if (videoEl.srcObject) {
-        try { const oldTracks = videoEl.srcObject.getTracks(); oldTracks.forEach(t => t.stop()); } catch(e) {}
-        videoEl.srcObject = null;
-      }
-      videoEl.srcObject = stream;
-      videoEl.autoplay = true;
-      videoEl.playsInline = true;
-      videoEl.muted = true;
-      
-      const loadingEl = document.getElementById('videoLoading');
-      if (loadingEl) loadingEl.textContent = '📷 映像を読み込み中...';
-      
-      let resolved = false;
-      const onLoaded = () => {
-        if (resolved) return;
-        resolved = true;
-        videoEl.style.display = 'block';
-        videoEl.style.visibility = 'visible';
-        videoEl.style.opacity = '1';
-        if (loadingEl) loadingEl.textContent = '📷 映像表示中';
-        const panel = videoEl.closest('.camera');
-        if (panel) panel.classList.add('video-loaded');
-        resolve();
-      };
-      const onError = (err) => {
-        if (resolved) return;
-        resolved = true;
-        reject(err);
-      };
-      videoEl.addEventListener('loadedmetadata', onLoaded, { once: true });
-      videoEl.addEventListener('loadeddata', onLoaded, { once: true });
-      videoEl.addEventListener('canplay', onLoaded, { once: true });
-      videoEl.addEventListener('error', onError, { once: true });
-      
-      videoEl.play().then(() => {
-        if (!resolved) {
-          resolved = true;
-          videoEl.style.display = 'block';
-          videoEl.style.visibility = 'visible';
-          videoEl.style.opacity = '1';
-          if (loadingEl) loadingEl.textContent = '📷 映像表示中';
-          const panel = videoEl.closest('.camera');
-          if (panel) panel.classList.add('video-loaded');
-          resolve();
+// 映像を強制的に表示する関数
+function forceShowVideo(videoEl) {
+    if (!videoEl) return;
+    videoEl.style.display = 'block';
+    videoEl.style.visibility = 'visible';
+    videoEl.style.opacity = '1';
+    videoEl.style.width = '100%';
+    videoEl.style.height = '100%';
+    videoEl.style.objectFit = 'cover';
+    // ローディングを非表示
+    const loading = document.getElementById('videoLoading');
+    if (loading) loading.style.display = 'none';
+    const noCam = document.getElementById('noCamera');
+    if (noCam) noCam.style.display = 'none';
+    const panel = document.getElementById('cameraPanel');
+    if (panel) panel.classList.add('video-loaded');
+}
+
+// video要素にストリームを設定して表示する
+function setupVideoStream(videoEl, stream) {
+    return new Promise((resolve, reject) => {
+        try {
+            // 既存のsrcObjectをクリア
+            if (videoEl.srcObject) {
+                try {
+                    const tracks = videoEl.srcObject.getTracks();
+                    tracks.forEach(t => t.stop());
+                } catch(e) {}
+                videoEl.srcObject = null;
+            }
+            
+            // ストリームを設定
+            videoEl.srcObject = stream;
+            videoEl.autoplay = true;
+            videoEl.playsInline = true;
+            videoEl.muted = true;
+            
+            // 強制表示
+            forceShowVideo(videoEl);
+            
+            // 再生を試行
+            videoEl.play().then(() => {
+                console.log('✅ 再生開始成功');
+                forceShowVideo(videoEl);
+                resolve();
+            }).catch((err) => {
+                console.warn('⚠️ 再生開始エラー:', err);
+                // エラーでも表示を維持
+                forceShowVideo(videoEl);
+                resolve(); // エラーでも解決して続行
+            });
+            
+            // ロード完了を待つ
+            const onLoaded = () => {
+                console.log('✅ 映像読み込み完了');
+                forceShowVideo(videoEl);
+                resolve();
+            };
+            
+            videoEl.addEventListener('loadedmetadata', onLoaded, { once: true });
+            videoEl.addEventListener('loadeddata', onLoaded, { once: true });
+            videoEl.addEventListener('canplay', onLoaded, { once: true });
+            
+            // タイムアウト（3秒で強制完了）
+            setTimeout(() => {
+                console.log('⏰ タイムアウト: 強制表示');
+                forceShowVideo(videoEl);
+                resolve();
+            }, 3000);
+            
+        } catch (err) {
+            console.error('❌ setupVideoStream エラー:', err);
+            // エラーでも表示を維持
+            forceShowVideo(videoEl);
+            resolve();
         }
-      }).catch(err => { console.warn('play err:', err); });
-      
-      setTimeout(() => {
-        if (!resolved) {
-          resolved = true;
-          videoEl.style.display = 'block';
-          videoEl.style.visibility = 'visible';
-          videoEl.style.opacity = '1';
-          if (loadingEl) loadingEl.textContent = '📷 映像（強制）';
-          const panel = videoEl.closest('.camera');
-          if (panel) panel.classList.add('video-loaded');
-          resolve();
-        }
-      }, 5000);
-    } catch (err) { reject(err); }
-  });
+    });
 }
 
 async function updateCams() {
-  try {
-    log("カメラスキャン...", "SYSTEM");
     try {
-      const facing = useFrontCamera ? "user" : "environment";
-      const s = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: facing, width: { ideal: 640 }, height: { ideal: 480 } }
-      });
-      s.getTracks().forEach(t => t.stop());
-      log("カメラ権限OK", "SYSTEM");
+        log("カメラスキャン...", "SYSTEM");
+        // カメラ権限を取得
+        try {
+            const facing = useFrontCamera ? "user" : "environment";
+            const s = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: facing, width: { ideal: 640 }, height: { ideal: 480 } }
+            });
+            s.getTracks().forEach(t => t.stop());
+            log("カメラ権限OK", "SYSTEM");
+        } catch (e) {
+            try {
+                const s = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: "environment", width: { ideal: 640 }, height: { ideal: 480 } }
+                });
+                s.getTracks().forEach(t => t.stop());
+                useFrontCamera = false;
+                log("カメラ権限OK（背面）", "SYSTEM");
+            } catch (e2) {
+                log("⚠️ カメラ権限が拒否されました", "ERROR");
+            }
+        }
+        const devs = await navigator.mediaDevices.enumerateDevices();
+        vDevices = devs.filter(d => d.kind === "videoinput");
+        log(`カメラ${vDevices.length}台検出`, "SYSTEM");
+        const btn = $("switchCamBtn"), badge = document.getElementById("cameraCount");
+        if (vDevices.length > 1) {
+            btn.style.display = "flex";
+            if (badge) { badge.textContent = vDevices.length; badge.style.display = "flex"; }
+        } else {
+            btn.style.display = "none";
+            if (badge) badge.style.display = "none";
+        }
+        return vDevices;
     } catch (e) {
-      try {
-        const s = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment", width: { ideal: 640 }, height: { ideal: 480 } }
-        });
-        s.getTracks().forEach(t => t.stop());
-        useFrontCamera = false;
-        log("カメラ権限OK（背面）", "SYSTEM");
-      } catch (e2) {
-        log("⚠️ カメラ権限が拒否されました", "ERROR");
-      }
+        log("カメラエラー: " + e.message, "ERROR");
+        $("switchCamBtn").style.display = "none";
+        return [];
     }
-    const devs = await navigator.mediaDevices.enumerateDevices();
-    vDevices = devs.filter(d => d.kind === "videoinput");
-    log(`カメラ${vDevices.length}台検出`, "SYSTEM");
-    const btn = $("switchCamBtn"), badge = document.getElementById("cameraCount");
-    if (vDevices.length > 1) {
-      btn.style.display = "flex"; btn.style.visibility = "visible";
-      if (badge) { badge.textContent = vDevices.length; badge.style.display = "flex"; }
-      log("✅ 切替ボタン表示", "SYSTEM");
-    } else {
-      btn.style.display = "none"; if (badge) badge.style.display = "none";
-    }
-    return vDevices;
-  } catch (e) {
-    log("カメラエラー: " + e.message, "ERROR");
-    $("switchCamBtn").style.display = "none";
-    return [];
-  }
 }
 
 async function startSystem(id = null) {
-  if (running && !id) return;
-  try {
-    log("起動...", "SYSTEM");
-    $("statusMain").textContent = "起動中...";
-    await stopStreams();
-    await updateCams();
-    streams = [];
-    if (vDevices.length === 0) {
-      log("⚠️ カメラなし", "WARNING");
-      $("noCamera").textContent = "📷 カメラが見つかりません";
-      $("noCamera").style.display = "grid";
-      $("statusMain").textContent = "カメラなし";
-      return;
-    }
-    const videoEl = $("video");
-    const loadingEl = document.getElementById('videoLoading');
-    for (let i = 0; i < vDevices.length; i++) {
-      const d = vDevices[i];
-      try {
-        const constraints = {
-          video: {
-            deviceId: { exact: d.deviceId },
-            width: { ideal: 640, max: 1280 },
-            height: { ideal: 480, max: 720 },
-            facingMode: useFrontCamera ? "user" : "environment"
-          },
-          audio: i === 0 ? { echoCancellation: true, noiseSuppression: true, autoGainControl: true } : false
-        };
-        log(`カメラ${i+1}起動中...`, "SYSTEM");
-        const s = await navigator.mediaDevices.getUserMedia(constraints);
-        let el = i === 0 ? videoEl : document.createElement("video");
-        await setupVideoElement(el, s);
-        if (i === 0) {
-          $("noCamera").style.display = "none";
-          if (loadingEl) loadingEl.style.display = "none";
-          videoEl.style.display = "block";
-          videoEl.style.visibility = "visible";
-          videoEl.style.opacity = "1";
+    if (running && !id) return;
+    try {
+        log("起動...", "SYSTEM");
+        $("statusMain").textContent = "起動中...";
+        
+        // 既存のストリームを停止
+        await stopStreams();
+        
+        // カメラデバイスをスキャン
+        await updateCams();
+        streams = [];
+        
+        if (vDevices.length === 0) {
+            log("⚠️ カメラなし", "WARNING");
+            document.getElementById('noCamera').style.display = 'grid';
+            document.getElementById('noCamera').textContent = '📷 カメラが見つかりません';
+            $("statusMain").textContent = "カメラなし";
+            return;
         }
-        streams.push({ stream: s, videoEl: el, label: d.label || `カメラ${i+1}` });
-        log(`✅ カメラ${i+1}起動成功`, "SYSTEM");
-      } catch (err) {
-        log(`⚠️ カメラ${i+1}起動失敗: ${err.message}`, "WARNING");
-      }
+        
+        const videoEl = $("video");
+        const loadingEl = document.getElementById('videoLoading');
+        
+        // 各カメラを起動（最初の1台だけでOK）
+        let cameraStarted = false;
+        for (let i = 0; i < vDevices.length; i++) {
+            const d = vDevices[i];
+            try {
+                const constraints = {
+                    video: {
+                        deviceId: { exact: d.deviceId },
+                        width: { ideal: 640, max: 1280 },
+                        height: { ideal: 480, max: 720 }
+                    },
+                    audio: i === 0 ? { echoCancellation: true, noiseSuppression: true } : false
+                };
+                
+                log(`カメラ${i+1}起動中...`, "SYSTEM");
+                const s = await navigator.mediaDevices.getUserMedia(constraints);
+                
+                // ★ 重要: メインのvideo要素に直接ストリームを設定
+                if (!cameraStarted) {
+                    await setupVideoStream(videoEl, s);
+                    cameraStarted = true;
+                    
+                    // 表示を強制
+                    videoEl.style.display = 'block';
+                    videoEl.style.visibility = 'visible';
+                    videoEl.style.opacity = '1';
+                    if (loadingEl) loadingEl.style.display = 'none';
+                    document.getElementById('noCamera').style.display = 'none';
+                    
+                    log("✅ メインカメラ起動成功", "SYSTEM");
+                }
+                
+                streams.push({ stream: s, videoEl: videoEl, label: d.label || `カメラ${i+1}` });
+                
+            } catch (err) {
+                log(`⚠️ カメラ${i+1}起動失敗: ${err.message}`, "WARNING");
+            }
+        }
+        
+        if (!streams.length) {
+            log("⚠️ 全てのカメラ起動に失敗しました", "ERROR");
+            document.getElementById('noCamera').style.display = 'grid';
+            document.getElementById('noCamera').textContent = '📷 カメラが使用できません';
+            $("statusMain").textContent = "カメラエラー";
+            return;
+        }
+        
+        // ★ 最終確認: video要素が表示されているか
+        if (videoEl.srcObject) {
+            forceShowVideo(videoEl);
+        } else {
+            // フォールバック: ストリームが設定されていない場合
+            if (streams.length > 0 && streams[0].stream) {
+                await setupVideoStream(videoEl, streams[0].stream);
+                forceShowVideo(videoEl);
+            }
+        }
+        
+        // 音声処理
+        const audio = streams.find(c => c.stream.getAudioTracks().length > 0)?.stream;
+        if (audio) {
+            if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+            await actx.resume();
+            if (src) try { src.disconnect(); } catch {}
+            src = actx.createMediaStreamSource(audio);
+            if (!analyser) {
+                analyser = actx.createAnalyser();
+                analyser.fftSize = 2048;
+                analyser.smoothingTimeConstant = 0.5;
+            }
+            src.connect(analyser);
+            log("音声処理OK", "SYSTEM");
+        }
+        
+        running = true;
+        $("startBtn").disabled = true;
+        $("stopBtn").disabled = false;
+        $("statusMain").textContent = "実行中";
+        analyze();
+        log("✅ システム起動完了", "SYSTEM");
+        
+    } catch (e) {
+        log("起動失敗: " + e.message, "ERROR");
+        console.error(e);
+        stopSys(false);
     }
-    if (!streams.length) {
-      log("⚠️ 全てのカメラ起動に失敗しました", "ERROR");
-      $("noCamera").textContent = "📷 カメラが使用できません";
-      $("noCamera").style.display = "grid";
-      $("statusMain").textContent = "カメラエラー";
-      if (loadingEl) loadingEl.textContent = "❌ カメラエラー";
-      return;
-    }
-    if (videoEl.srcObject) {
-      videoEl.style.display = "block";
-      videoEl.style.visibility = "visible";
-      videoEl.style.opacity = "1";
-      $("noCamera").style.display = "none";
-      if (loadingEl) loadingEl.style.display = "none";
-    }
-    const audio = streams.find(c => c.stream.getAudioTracks().length > 0)?.stream;
-    if (audio) {
-      if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
-      await actx.resume();
-      if (src) try { src.disconnect(); } catch {}
-      src = actx.createMediaStreamSource(audio);
-      if (!analyser) {
-        analyser = actx.createAnalyser();
-        analyser.fftSize = 2048;
-        analyser.smoothingTimeConstant = 0.5;
-      }
-      src.connect(analyser);
-      log("音声処理OK", "SYSTEM");
-    }
-    running = true;
-    $("startBtn").disabled = true;
-    $("stopBtn").disabled = false;
-    $("statusMain").textContent = "実行中";
-    analyze();
-    log("✅ システム起動完了", "SYSTEM");
-  } catch (e) {
-    log("起動失敗: " + e.message, "ERROR");
-    stopSys(false);
-  }
 }
 
 async function stopStreams() {
-  streams.forEach(i => {
-    if (i.stream) i.stream.getTracks().forEach(t => t.stop());
-    if (i.videoEl && i.videoEl !== $("video")) i.videoEl.remove();
-  });
-  streams = [];
+    streams.forEach(i => {
+        if (i.stream) i.stream.getTracks().forEach(t => t.stop());
+        if (i.videoEl && i.videoEl !== $("video")) i.videoEl.remove();
+    });
+    streams = [];
+    // video要素をクリア
+    const videoEl = $("video");
+    if (videoEl) {
+        videoEl.srcObject = null;
+        videoEl.style.display = 'none';
+    }
 }
 
 function stopSys(w = true) {
-  running = false;
-  if (raf) cancelAnimationFrame(raf);
-  resetSeqs();
-  timers.forEach(clearTimeout);
-  timers.clear();
-  [src, analyser].forEach(n => { try { n?.disconnect(); } catch {} });
-  if (actx) try { actx.close(); } catch {}
-  stopStreams();
-  src = analyser = actx = null;
-  $("video").srcObject = null;
-  $("noCamera").style.display = "grid";
-  $("noCamera").textContent = "📷 停止中";
-  $("switchCamBtn").style.display = "none";
-  $("startBtn").disabled = false;
-  $("stopBtn").disabled = true;
-  $("statusMain").textContent = "停止中";
-  if (w) log("停止", "SYSTEM");
+    running = false;
+    if (raf) cancelAnimationFrame(raf);
+    resetSeqs();
+    timers.forEach(clearTimeout);
+    timers.clear();
+    [src, analyser].forEach(n => { try { n?.disconnect(); } catch {} });
+    if (actx) try { actx.close(); } catch {}
+    stopStreams();
+    src = analyser = actx = null;
+    $("video").srcObject = null;
+    document.getElementById('noCamera').style.display = 'grid';
+    document.getElementById('noCamera').textContent = '📷 停止中';
+    $("switchCamBtn").style.display = "none";
+    $("startBtn").disabled = false;
+    $("stopBtn").disabled = true;
+    $("statusMain").textContent = "停止中";
+    if (w) log("停止", "SYSTEM");
 }
 
+// カメラ切り替え
 $("switchCamBtn").onclick = async () => {
-  if (!vDevices.length) { log("切替可能なカメラがありません", "ERROR"); return; }
-  useFrontCamera = !useFrontCamera;
-  log(`🔄 カメラ切替: ${useFrontCamera ? "前面" : "背面"}カメラ`, "SYSTEM");
-  const loadingEl = document.getElementById('videoLoading');
-  if (loadingEl) { loadingEl.style.display = "flex"; loadingEl.textContent = "📷 カメラ切替中..."; }
-  const panel = document.querySelector('.camera');
-  if (panel) panel.classList.remove('video-loaded');
-  await startSystem();
+    if (!vDevices.length) { log("切替可能なカメラがありません", "ERROR"); return; }
+    useFrontCamera = !useFrontCamera;
+    log(`🔄 カメラ切替: ${useFrontCamera ? "前面" : "背面"}カメラ`, "SYSTEM");
+    const loadingEl = document.getElementById('videoLoading');
+    if (loadingEl) { loadingEl.style.display = "flex"; loadingEl.textContent = "📷 カメラ切替中..."; }
+    await startSystem();
 };
 
 // 音声解析
