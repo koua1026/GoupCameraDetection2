@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>GUDMS-GoUpDiscordMessagingSystem</title>
 <style>
+/* ===== 既存のスタイル（変更なし） ===== */
 *{box-sizing:border-box}body{margin:0;padding:18px;font-family:sans-serif;background:#0f172a;color:#f8fafc;min-height:100vh}
 .app{width:min(1100px,100%);margin:0 auto;display:grid;grid-template-columns:1fr 1fr;gap:12px 18px}
 .panel{border:1px solid rgba(255,255,255,0.15);background:#1e293b;border-radius:18px;box-shadow:0 4px 20px rgba(0,0,0,0.3);overflow:hidden}
@@ -185,7 +186,7 @@ button:disabled{opacity:.3;cursor:not-allowed}
   </div></section>
   <section class="panel top-title">"DiscordMessaging"</section>
   
-  <!-- カメラ部分 -->
+  <!-- ★★★ カメラ部分（新しく作り直し） ★★★ -->
   <section class="panel camera" id="cameraPanel">
     <video id="video" autoplay playsinline muted></video>
     <div class="video-loading" id="videoLoading">📷 カメラを起動中...</div>
@@ -271,51 +272,37 @@ button:disabled{opacity:.3;cursor:not-allowed}
 
 <script>
 // ============================================================
-// 認証
+// 認証（既存）
 // ============================================================
 const PASSWORD = "brainrot";
 function authenticate(){const i=document.getElementById('auth-password'),e=document.getElementById('auth-error');if(i.value===PASSWORD){document.getElementById('auth-overlay').style.display='none';document.getElementById('mainApp').style.display='grid';setTimeout(startSystem,300)}else{e.textContent='❌ パスワードが違います';i.value='';i.focus();setTimeout(()=>e.textContent='',3000)}}
 document.getElementById('auth-password').addEventListener('keydown',e=>{if(e.key==='Enter')authenticate()});
 
 // ============================================================
-// 定数・変数（基本設定）
+// 定数・変数（既存）
 // ============================================================
 const $=id=>document.getElementById(id),esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]));
-let photos=[],logs=[],seqStates=[],lastTrigger=new Map,timers=new Map,filter="ALL",actx=null,analyser=null,src=null,raf=null,running=false,paused=false,editIdx=null,vDevices=[],streams=[];
-let currentCameraIndex = 0;
+let photos=[],logs=[],seqStates=[],lastTrigger=new Map,timers=new Map,filter="ALL",actx=null,analyser=null,src=null,raf=null,running=false,paused=false,editIdx=null;
 
 // ============================================================
-// ★★★ ユーザー設定エリア（ここを編集してください） ★★★
+// ★★★ ユーザー設定エリア（既存） ★★★
 // ============================================================
-
 const WEBHOOKS = {
   koua: "https://discord.com/api/webhooks/1544588432100302899/hd7Od9KkQMKRM5DzeWWKCgwMYTyzR6TVLs0-X-01o0w3w_90fcc-TxPyNM1kkrI_eGgJ",
   fumiya: "https://discord.com/api/webhooks/1534838115766636587/QTze72Dgr8B7P4fFFewQeauXZRrZfMAitO0kVYipKl-pWyfSXIG158KKR7mrRJ-1HD3c"
 };
-
 let tags = ["forbidden", "ascended", "divine"];
-
-let colors = {
-  forbidden: "#1E90FF",
-  ascended: "#FF4500",
-  divine: "#00FFFF"
-};
-
+let colors = { forbidden: "#1E90FF", ascended: "#FF4500", divine: "#00FFFF" };
 let threads = {
   forbidden: { koua: "1545089976625274991", fumiya: "1545089552450846760" },
   ascended: { koua: "1545090039468396674", fumiya: "1545089627743060138" },
   divine: { koua: "1545090100768145499", fumiya: "1545089707824783400" }
 };
-
 let ranges = [
-  { name: "forbidden1st", low: 430, high: 450 },
-  { name: "forbidden2nd", low: 380, high: 400 },
-  { name: "ascended1st", low: 340, high: 365 },
-  { name: "ascended2nd", low: 650, high: 750 },
-  { name: "divine1st", low: 2120, high: 2160 },
-  { name: "divine2nd", low: 300, high: 500 }
+  { name: "forbidden1st", low: 430, high: 450 }, { name: "forbidden2nd", low: 380, high: 400 },
+  { name: "ascended1st", low: 340, high: 365 }, { name: "ascended2nd", low: 650, high: 750 },
+  { name: "divine1st", low: 2120, high: 2160 }, { name: "divine2nd", low: 300, high: 500 }
 ];
-
 let seqs = [
   { id: "s1", tag: "forbidden", first: "forbidden1st", second: "forbidden2nd", windowSec: 5 },
   { id: "s2", tag: "ascended", first: "ascended1st", second: "ascended2nd", windowSec: 5 },
@@ -323,55 +310,48 @@ let seqs = [
 ];
 
 // ============================================================
-// ★★★ カメラ制御（完全に作り直し） ★★★
+// ★★★ カメラ・マイク・ライブ映像（完全に新しく作り直し） ★★★
 // ============================================================
 
-let mainStream = null;
+let cameraStream = null;
+let videoDevices = [];
+let currentDeviceIndex = 0;
 let isCameraReady = false;
 
-// ★★★ 音声処理を設定（完全に作り直し） ★★★
-function setupAudio(stream) {
+// カメラデバイス一覧を取得
+async function scanCameras() {
     try {
-        // 既存の音声処理を完全に破棄
-        if (src) {
-            try { src.disconnect(); } catch(e) {}
-            src = null;
+        // 権限確認
+        try {
+            const tmp = await navigator.mediaDevices.getUserMedia({ video: true });
+            tmp.getTracks().forEach(t => t.stop());
+        } catch(e) {}
+        
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        videoDevices = devices.filter(d => d.kind === 'videoinput');
+        
+        const btn = document.getElementById('switchCamBtn');
+        const badge = document.getElementById('cameraCount');
+        if (videoDevices.length > 1) {
+            btn.style.display = 'flex';
+            btn.style.visibility = 'visible';
+            if (badge) {
+                badge.textContent = videoDevices.length;
+                badge.style.display = 'flex';
+            }
+            log('✅ カメラ切替ボタン表示 (' + videoDevices.length + '台)', 'SYSTEM');
+        } else {
+            btn.style.display = 'none';
+            if (badge) badge.style.display = 'none';
         }
-        if (actx) {
-            try { actx.close(); } catch(e) {}
-            actx = null;
-        }
-        analyser = null;
-        
-        // AudioContextを新規作成
-        actx = new (window.AudioContext || window.webkitAudioContext)();
-        
-        // 音声ソースを作成
-        src = actx.createMediaStreamSource(stream);
-        
-        // アナライザーを作成
-        analyser = actx.createAnalyser();
-        analyser.fftSize = 2048;
-        analyser.smoothingTimeConstant = 0.5;
-        
-        // 接続
-        src.connect(analyser);
-        
-        // AudioContextを再開
-        if (actx.state === 'suspended') {
-            actx.resume();
-        }
-        
-        log('✅ 音声処理設定完了', 'SYSTEM');
-        log(`📊 音声トラック数: ${stream.getAudioTracks().length}`, 'SYSTEM');
-        
-    } catch (err) {
-        log('❌ 音声処理設定エラー: ' + err.message, 'ERROR');
-        console.error('音声処理エラー:', err);
+        return videoDevices;
+    } catch(e) {
+        log('⚠️ カメラスキャンエラー: ' + e.message, 'ERROR');
+        return [];
     }
 }
 
-// カメラを起動してvideo要素に表示する関数
+// カメラを起動
 async function startCamera(deviceId) {
     const video = document.getElementById('video');
     const loading = document.getElementById('videoLoading');
@@ -379,29 +359,22 @@ async function startCamera(deviceId) {
     const panel = document.getElementById('cameraPanel');
     
     try {
-        // ローディング表示
         loading.style.display = 'flex';
         loading.textContent = '📷 カメラ起動中...';
         noCamera.style.display = 'none';
         
-        // ★★★ 既存の音声処理を完全にクリア ★★★
-        if (src) {
-            try { src.disconnect(); } catch(e) {}
-            src = null;
+        // 既存のストリームを停止
+        if (cameraStream) {
+            cameraStream.getTracks().forEach(t => t.stop());
+            cameraStream = null;
         }
-        if (actx) {
-            try { await actx.close(); } catch(e) {}
-            actx = null;
-        }
+        
+        // 音声処理をリセット
+        if (src) { try { src.disconnect(); } catch(e) {} src = null; }
+        if (actx) { try { await actx.close(); } catch(e) {} actx = null; }
         analyser = null;
         
-        // ★★★ 既存のストリームを停止 ★★★
-        if (mainStream) {
-            mainStream.getTracks().forEach(t => t.stop());
-            mainStream = null;
-        }
-        
-        // カメラの設定（音声も必ず取得）
+        // カメラ設定
         const constraints = {
             video: {
                 deviceId: deviceId ? { exact: deviceId } : undefined,
@@ -416,9 +389,9 @@ async function startCamera(deviceId) {
             }
         };
         
-        // カメラを取得
+        // ストリーム取得
         const stream = await navigator.mediaDevices.getUserMedia(constraints);
-        mainStream = stream;
+        cameraStream = stream;
         
         // video要素に設定
         video.srcObject = stream;
@@ -426,9 +399,9 @@ async function startCamera(deviceId) {
         video.playsInline = true;
         video.muted = true;
         
-        // 映像が表示されるまで待機
+        // 映像読み込み待機
         await new Promise((resolve) => {
-            const checkVideo = () => {
+            const check = () => {
                 if (video.readyState >= 2) {
                     resolve();
                 } else {
@@ -436,23 +409,22 @@ async function startCamera(deviceId) {
                     setTimeout(resolve, 3000);
                 }
             };
-            checkVideo();
+            check();
         });
         
-        // 映像を表示
+        // 映像表示
         video.style.display = 'block';
         video.style.visibility = 'visible';
         video.style.opacity = '1';
         loading.style.display = 'none';
         noCamera.style.display = 'none';
         if (panel) panel.classList.add('video-loaded');
-        
         isCameraReady = true;
+        
         log('✅ カメラ起動成功', 'SYSTEM');
         
-        // ★★★ 音声処理を設定（確実に実行） ★★★
+        // 音声処理設定
         if (stream.getAudioTracks().length > 0) {
-            log('🎤 音声トラックを検出、音声処理を設定します', 'SYSTEM');
             setupAudio(stream);
         } else {
             log('⚠️ 音声トラックがありません', 'WARNING');
@@ -460,7 +432,7 @@ async function startCamera(deviceId) {
         
         return stream;
         
-    } catch (err) {
+    } catch(err) {
         console.error('カメラ起動エラー:', err);
         loading.textContent = '❌ カメラエラー: ' + err.message;
         noCamera.style.display = 'grid';
@@ -471,49 +443,56 @@ async function startCamera(deviceId) {
     }
 }
 
-// カメラデバイス一覧を取得
-async function scanCameras() {
+// 音声処理を設定
+function setupAudio(stream) {
     try {
-        // 権限確認のため一時的にカメラを起動
-        try {
-            const tempStream = await navigator.mediaDevices.getUserMedia({ video: true });
-            tempStream.getTracks().forEach(t => t.stop());
-        } catch(e) {
-            // 権限がない場合
-        }
+        if (src) { try { src.disconnect(); } catch(e) {} src = null; }
+        if (actx) { try { actx.close(); } catch(e) {} actx = null; }
+        analyser = null;
         
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        vDevices = devices.filter(d => d.kind === 'videoinput');
+        actx = new (window.AudioContext || window.webkitAudioContext)();
+        src = actx.createMediaStreamSource(stream);
+        analyser = actx.createAnalyser();
+        analyser.fftSize = 2048;
+        analyser.smoothingTimeConstant = 0.5;
+        src.connect(analyser);
+        if (actx.state === 'suspended') actx.resume();
         
-        log(`📷 カメラ${vDevices.length}台検出`, 'SYSTEM');
-        
-        // カメラ切替ボタンの表示制御
-        const btn = document.getElementById('switchCamBtn');
-        const badge = document.getElementById('cameraCount');
-        if (vDevices.length > 1) {
-            btn.style.display = 'flex';
-            btn.style.visibility = 'visible';
-            if (badge) {
-                badge.textContent = vDevices.length;
-                badge.style.display = 'flex';
-            }
-            log('✅ カメラ切替ボタン表示', 'SYSTEM');
-        } else {
-            btn.style.display = 'none';
-            if (badge) badge.style.display = 'none';
-        }
-        
-        return vDevices;
-    } catch (err) {
-        log('⚠️ カメラスキャンエラー: ' + err.message, 'WARNING');
-        return [];
+        log('✅ 音声処理設定完了', 'SYSTEM');
+    } catch(err) {
+        log('❌ 音声処理設定エラー: ' + err.message, 'ERROR');
+    }
+}
+
+// カメラ切り替え
+async function switchCamera() {
+    if (videoDevices.length < 2) {
+        log('⚠️ 切り替え可能なカメラがありません', 'WARNING');
+        return;
+    }
+    
+    currentDeviceIndex = (currentDeviceIndex + 1) % videoDevices.length;
+    const device = videoDevices[currentDeviceIndex];
+    const label = device.label || `カメラ ${currentDeviceIndex + 1}`;
+    
+    log(`🔄 カメラ切替: ${label} (${currentDeviceIndex + 1}/${videoDevices.length})`, 'SYSTEM');
+    
+    const loading = document.getElementById('videoLoading');
+    loading.style.display = 'flex';
+    loading.textContent = '📷 カメラ切替中...';
+    document.getElementById('cameraPanel').classList.remove('video-loaded');
+    
+    const stream = await startCamera(device.deviceId);
+    if (stream && running) {
+        // 解析ループ再開
+        if (raf) cancelAnimationFrame(raf);
+        analyze();
     }
 }
 
 // ============================================================
-// ★★★ システム制御 ★★★
+// システム制御（既存を一部修正）
 // ============================================================
-
 async function startSystem() {
     if (running) return;
     
@@ -521,20 +500,16 @@ async function startSystem() {
         log('🚀 システム起動開始', 'SYSTEM');
         document.getElementById('statusMain').textContent = '起動中...';
         
-        // カメラをスキャン
         await scanCameras();
-        
-        if (vDevices.length === 0) {
+        if (videoDevices.length === 0) {
             document.getElementById('noCamera').style.display = 'grid';
             document.getElementById('noCamera').textContent = '📷 カメラが見つかりません';
             document.getElementById('statusMain').textContent = 'カメラなし';
             return;
         }
         
-        // 最初のカメラを起動
-        const deviceId = vDevices[currentCameraIndex]?.deviceId;
+        const deviceId = videoDevices[currentDeviceIndex]?.deviceId;
         const stream = await startCamera(deviceId);
-        
         if (!stream) {
             document.getElementById('statusMain').textContent = 'カメラエラー';
             return;
@@ -545,13 +520,11 @@ async function startSystem() {
         document.getElementById('stopBtn').disabled = false;
         document.getElementById('statusMain').textContent = '実行中';
         
-        // 解析ループ開始
         if (raf) cancelAnimationFrame(raf);
         analyze();
         
         log('✅ システム起動完了', 'SYSTEM');
-        
-    } catch (err) {
+    } catch(err) {
         log('❌ 起動失敗: ' + err.message, 'ERROR');
         document.getElementById('statusMain').textContent = '起動失敗';
     }
@@ -561,10 +534,9 @@ function stopSystem() {
     running = false;
     if (raf) cancelAnimationFrame(raf);
     
-    // カメラ停止
-    if (mainStream) {
-        mainStream.getTracks().forEach(t => t.stop());
-        mainStream = null;
+    if (cameraStream) {
+        cameraStream.getTracks().forEach(t => t.stop());
+        cameraStream = null;
     }
     document.getElementById('video').srcObject = null;
     document.getElementById('video').style.display = 'none';
@@ -573,72 +545,23 @@ function stopSystem() {
     document.getElementById('videoLoading').style.display = 'none';
     document.getElementById('switchCamBtn').style.display = 'none';
     
-    // 音声処理停止
-    if (src) {
-        try { src.disconnect(); } catch(e) {}
-        src = null;
-    }
-    if (actx) {
-        try { actx.close(); } catch(e) {}
-        actx = null;
-    }
+    if (src) { try { src.disconnect(); } catch(e) {} src = null; }
+    if (actx) { try { actx.close(); } catch(e) {} actx = null; }
     analyser = null;
     
     document.getElementById('startBtn').disabled = false;
     document.getElementById('stopBtn').disabled = true;
     document.getElementById('statusMain').textContent = '停止中';
     
-    // シーケンスリセット
     resetSeqs();
     timers.forEach(clearTimeout);
     timers.clear();
-    
     isCameraReady = false;
     log('⏹ システム停止', 'SYSTEM');
 }
 
-// ★★★ カメラ切り替え（修正版） ★★★
-async function switchCamera() {
-    if (!vDevices.length || vDevices.length < 2) {
-        log('⚠️ 切り替え可能なカメラがありません', 'WARNING');
-        return;
-    }
-    
-    // 次のカメラに切り替え
-    currentCameraIndex = (currentCameraIndex + 1) % vDevices.length;
-    const device = vDevices[currentCameraIndex];
-    const label = device.label || `カメラ ${currentCameraIndex + 1}`;
-    
-    log(`🔄 カメラ切替: ${label} (${currentCameraIndex + 1}/${vDevices.length})`, 'SYSTEM');
-    
-    const loading = document.getElementById('videoLoading');
-    loading.style.display = 'flex';
-    loading.textContent = '📷 カメラ切替中...';
-    document.getElementById('cameraPanel').classList.remove('video-loaded');
-    
-    // 新しいカメラを起動
-    const stream = await startCamera(device.deviceId);
-    
-    if (stream) {
-        log('✅ カメラ切替完了', 'SYSTEM');
-        // 音声処理が正常に設定されたか確認
-        if (!analyser || !actx) {
-            log('⚠️ 音声処理が未設定です。再設定します。', 'WARNING');
-            setupAudio(stream);
-        }
-        // 解析ループを再開
-        if (raf) cancelAnimationFrame(raf);
-        analyze();
-    } else {
-        log('❌ カメラ切替失敗', 'ERROR');
-        // 元のカメラに戻す
-        currentCameraIndex = (currentCameraIndex - 1 + vDevices.length) % vDevices.length;
-        await startCamera(vDevices[currentCameraIndex]?.deviceId);
-    }
-}
-
 // ============================================================
-// 音声解析
+// 音声解析（既存）
 // ============================================================
 function getVol(d){let s=0;for(let i=0;i<d.length;i++){const v=(d[i]-128)/128;s+=v*v}const r=Math.sqrt(s/d.length);return r<=1e-6?0:Math.max(0,Math.min(100,20*Math.log10(r)+100))}
 function autoCorrelate(b,rate){let n=b.length,r=0;for(let i=0;i<n;i++)r+=b[i]*b[i];r=Math.sqrt(r/n);if(r<0.01)return-1;let a=0,c=n-1,t=0.05;for(let i=0;i<n/2;i++){if(Math.abs(b[i])<t){a=i;break}}for(let i=1;i<n/2;i++){if(Math.abs(b[n-i])<t){c=n-i;break}}b=b.slice(a,c);n=b.length;let corr=new Array(n).fill(0);for(let i=0;i<n;i++){for(let j=0;j<n-i;j++)corr[i]+=b[j]*b[j+i]}let d=0;while(corr[d]>corr[d+1])d++;let max=-1,pos=-1;for(let i=d;i<n;i++){if(corr[i]>max){max=corr[i];pos=i}}let T=pos,x1=corr[T-1]||0,x2=corr[T],x3=corr[T+1]||0;let A=(x1+x3-2*x2)/2,B=(x3-x1)/2;if(A)T-=B/(2*A);return rate/T}
@@ -690,21 +613,28 @@ function analyze(){
 }
 
 // ============================================================
-// シーケンス制御（簡略化）
+// シーケンス制御（既存）
 // ============================================================
 function resetSeqs(){seqStates.forEach(s=>clearTimeout(s.timer));seqStates=[];updateSeqUI()}
 function updateSeqUI(){$("seqStatusList").innerHTML=seqStates.length?seqStates.map(s=>{const q=seqs.find(x=>x.id===s.seqId);return q?`<div style="color:#f59e0b">⏳ [${esc(q.tag)}] 「${esc(s.firstName)}」検出中 ➔ 「${esc(q.second)}」待機</div>`:""}).join(""):'<span style="color:#94a3b8">待機中</span>'}
 
 // ============================================================
-// 撮影・送信（簡略化）
+// 撮影・送信（既存）
 // ============================================================
 function getThreadUrl(base,id){if(!base||!base.startsWith("http"))return null;const sep=base.includes("?")?"&":"?";return base+sep+"thread_id="+id}
-async function captureAll(){if(!mainStream)throw new Error("カメラなし");const v=document.getElementById('video');if(!v||v.readyState<2)throw new Error("映像準備中");const w=v.videoWidth||640,h=v.videoHeight||480,c=document.createElement("canvas");c.width=w;c.height=h;c.getContext("2d").drawImage(v,0,0,w,h);return new Promise(r=>c.toBlob(b=>r([{blob:b,label:"カメラ"}]),"image/jpeg",.85))}
+async function captureAll(){
+    if(!cameraStream) throw new Error("カメラなし");
+    const v=document.getElementById('video');
+    if(!v||v.readyState<2) throw new Error("映像準備中");
+    const w=v.videoWidth||640,h=v.videoHeight||480,c=document.createElement("canvas");
+    c.width=w;c.height=h;c.getContext("2d").drawImage(v,0,0,w,h);
+    return new Promise(r=>c.toBlob(b=>r([{blob:b,label:"カメラ"}]),"image/jpeg",.85))
+}
 async function sendDiscord(blobs,range,freq,vol,info,url,tag){const t=ts(),tagColor=colors[tag]||"#38bdf8",hex=tagColor.replace("#",""),color=parseInt(hex,16)||0x38bdf8,form=new FormData(),payload={embeds:[{title:"📷 音声検知通知",color,fields:[{name:"時刻",value:t},{name:"タグ",value:tag},{name:"条件",value:info},{name:"音域",value:range.name},{name:"周波数",value:`${Math.round(freq)}Hz`},{name:"音量",value:`${vol.toFixed(1)}dB`},{name:"カメラ数",value:`${blobs.length}台`}]}]};form.append("payload_json",JSON.stringify(payload));blobs.forEach((item,i)=>{if(item&&item.blob&&item.blob.size>0)form.append(`files[${i}]`,item.blob,`cam_${i+1}_${Date.now()}.jpg`)});const res=await fetch(url,{method:"POST",body:form});if(!res.ok)throw new Error(`HTTP ${res.status}`);log(`Discord送信OK(${blobs.length}台)`,"DISCORD")}
 async function trigger(range,freq,vol,tag,info){const now=Date.now(),cd=+$("cooldown").value||0;if(now-(lastTrigger.get(range.name)||0)<cd||timers.has(range.name))return;lastTrigger.set(range.name,now);log(`トリガー:${range.name}(${Math.round(freq)}Hz/${vol.toFixed(1)}dB)[${tag}]`,"DETECT");const delay=+$("captureDelay").value||0;$("nextCapture").textContent=`${delay}ms後`;const t=setTimeout(async()=>{timers.delete(range.name);$("nextCapture").textContent="撮影中...";try{const blobs=await captureAll();if(!blobs||!blobs.length)throw new Error("画像なし");const first=blobs[0].blob;if(!first||!first.size)throw new Error("データ空");const url=URL.createObjectURL(first);if(photos.length>=20){const old=photos.pop();if(old&&old.url)try{URL.revokeObjectURL(old.url)}catch{}}photos.unshift({id:Date.now(),url:url,tag:tag,timestamp:new Date().toLocaleTimeString("ja-JP"),info:`${range.name}(${Math.round(freq)}Hz)`});renderGallery();if(paused){$("nextCapture").textContent="停止中";return}const set=threads[tag]||{koua:"1",fumiya:"4"},targets=[];if($("kouaSend")?.checked&&set&&set.koua&&WEBHOOKS.koua){const u=getThreadUrl(WEBHOOKS.koua,set.koua);if(u)targets.push(["Koua",u,set.koua])}if($("fumiyaSend")?.checked&&set&&set.fumiya&&WEBHOOKS.fumiya){const u=getThreadUrl(WEBHOOKS.fumiya,set.fumiya);if(u)targets.push(["Fumiya",u,set.fumiya])}if(!targets.length){const d=$("webhookUrl").value.trim();if(d&&d.startsWith("http")){const u=getThreadUrl(d,"1");if(u)targets.push(["デフォルト",u,"1"])}}if(!targets.length){$("nextCapture").textContent="送信先未設定";return}await Promise.all(targets.map(([name,u,id])=>sendDiscord(blobs,range,freq,vol,`${tag}(${info})`,u,tag).then(()=>log(`Discord:${name}(スレッド${id})`,"DISCORD")).catch(e=>log(`Discord失敗(${name}):${e.message}`,"ERROR"))));$("nextCapture").textContent="待機中"}catch(e){log(`エラー:${e.message}`,"ERROR");$("nextCapture").textContent="エラー"}},delay);timers.set(range.name,t)}
 
 // ============================================================
-// レンダリング関数（簡略化）
+// レンダリング関数（既存）
 // ============================================================
 function renderRanges(){const l=$("rangeList");l.innerHTML=ranges.map((r,i)=>`<div class="range-row"><label>名前<input type="text" value="${esc(r.name)}" disabled></label><label>Low<input type="number" value="${r.low}" disabled></label><label>High<input type="number" value="${r.high}" disabled></label><button class="edit-range" data-i="${i}">編集</button><button class="danger delete-range" data-i="${i}">削除</button></div>`).join("");l.querySelectorAll(".edit-range").forEach(b=>b.onclick=()=>openRangeModal(+b.dataset.i));l.querySelectorAll(".delete-range").forEach(b=>b.onclick=()=>{const d=ranges.splice(+b.dataset.i,1)[0].name;seqs.forEach(s=>{if(s.first===d&&ranges[0])s.first=ranges[0].name;if(s.second===d&&ranges[0])s.second=ranges[0].name});renderRanges();renderSeqs();renderColors();renderThreads()})}
 function renderSeqs(){const l=$("seqList"),opts=arr=>arr.map(v=>`<option value="${esc(v.name||v)}">${esc(v.name||v)}</option>`).join("");l.innerHTML=seqs.map(s=>`<div class="seq-row" data-id="${s.id}"><label>タグ<select data-id="${s.id}" data-k="tag">${opts(tags)}</select></label><label>1st<select data-id="${s.id}" data-k="first">${opts(ranges)}</select></label><label>2nd<select data-id="${s.id}" data-k="second">${opts(ranges)}</select></label><label>秒<input type="number" data-id="${s.id}" data-k="windowSec" value="${s.windowSec}" min="1" max="60"></label><button class="danger delete-seq" data-id="${s.id}">削除</button></div>`).join("");seqs.forEach(s=>{const r=l.querySelector(`.seq-row[data-id="${s.id}"]`);if(r){r.querySelector('[data-k="tag"]').value=s.tag;r.querySelector('[data-k="first"]').value=s.first;r.querySelector('[data-k="second"]').value=s.second}});l.querySelectorAll("select,input").forEach(el=>el.onchange=()=>{const s=seqs.find(x=>x.id===el.dataset.id);if(s){s[el.dataset.k]=el.dataset.k==="windowSec"?(+el.value||1):el.value;updateSeqUI()}});l.querySelectorAll(".delete-seq").forEach(b=>b.onclick=()=>{seqs=seqs.filter(s=>s.id!==b.dataset.id);resetSeqs();renderSeqs()});updateSeqUI();updateGalleryFilter()}
@@ -715,7 +645,7 @@ function renderGallery(){const g=$("galleryGrid"),f=$("galleryFilter").value,lst
 $("galleryFilter").onchange=renderGallery;$("imageModalCloseBtn").onclick=$("imageModal").onclick=e=>{if(e.target===$("imageModalCloseBtn")||e.target===$("imageModal"))$("imageModal").style.display="none"};
 
 // ============================================================
-// モーダル制御
+// モーダル制御（既存）
 // ============================================================
 function openRangeModal(i=null){editIdx=i;const isEdit=i!==null&&i>=0,item=isEdit?ranges[i]:{name:`音${String.fromCharCode(65+ranges.length)}`,low:1000+ranges.length*100,high:1050+ranges.length*100};$("modalTitle").textContent=isEdit?"編集":"追加";$("modalRangeName").value=item.name;$("modalRangeLow").value=item.low;$("modalRangeHigh").value=item.high;$("rangeModal").style.display="grid"}
 $("addRangeBtn").onclick=()=>openRangeModal(null);$("modalCancelBtn").onclick=()=>$("rangeModal").style.display="none";
@@ -727,25 +657,25 @@ $("addSeqBtn").onclick=()=>{seqs.push({id:uid(),tag:tags[0]||"条件1",first:ran
 $("discordPauseBtn").onclick=()=>{paused=!paused;$("discordPauseBtn").textContent=paused?"再開":"一時停止";$("discordState").textContent=paused?"送信:停止中":"送信:有効"};
 
 // ============================================================
-// テスト送信
+// テスト送信（既存）
 // ============================================================
 function updateTestTags(){const c=document.getElementById('testTagGroup');if(!c)return;c.innerHTML=tags.map(t=>`<label><input type="checkbox" class="test-tag" value="${esc(t)}" checked>${esc(t)}</label>`).join('')}
 function createBlackImg(){return new Promise(r=>{const c=document.createElement('canvas');c.width=640;c.height=480;const x=c.getContext('2d');x.fillStyle='#000';x.fillRect(0,0,640,480);x.fillStyle='#fff';x.font='40px sans-serif';x.textAlign='center';x.textBaseline='middle';x.fillText('🧪 TEST',320,220);x.font='20px sans-serif';x.fillText('テスト送信',320,290);c.toBlob(b=>{r(b)},'image/jpeg',.9)})}
 async function execTest(){const channels=[];document.querySelectorAll('.test-channel:checked').forEach(c=>channels.push(c.value));const tags2=[];document.querySelectorAll('.test-tag:checked').forEach(c=>tags2.push(c.value));if(!channels.length){alert('チャンネルを選択してください');return}if(!tags2.length){alert('タグを選択してください');return}const black=await createBlackImg();if(!black){log('画像生成失敗','ERROR');return}let ok=0,ng=0;for(const ch of channels){for(const tg of tags2){const s=threads[tg];if(!s){log(`⚠️ タグ "${tg}" のスレッド設定がありません。デフォルト値を使用します。`,"WARNING");const def={koua:"1",fumiya:"4"};const id=ch==='koua'?def.koua:def.fumiya;const url2=WEBHOOKS[ch];if(!url2||!id){log(`⚠️${ch}の${tg}設定なし`,'TEST');continue}const u=getThreadUrl(url2,id);if(!u){log(`⚠️${ch}のURL無効`,'TEST');continue}try{const dummy={name:'テスト'},blobs=[{blob:black,label:'テスト'}];log(`🧪${ch}→${tg}(スレッド${id})`,'TEST');await sendDiscord(blobs,dummy,440,50,`テスト(${ch}/${tg})`,u,tg);log(`✅${ch}→${tg}成功`,'TEST');ok++}catch(e){log(`❌${ch}→${tg}:${e.message}`,'ERROR');ng++}}else{const id=ch==='koua'?s.koua:s.fumiya;const url2=WEBHOOKS[ch];if(!url2||!id){log(`⚠️${ch}の${tg}設定なし`,'TEST');continue}const u=getThreadUrl(url2,id);if(!u){log(`⚠️${ch}のURL無効`,'TEST');continue}try{const dummy={name:'テスト'},blobs=[{blob:black,label:'テスト'}];log(`🧪${ch}→${tg}(スレッド${id})`,'TEST');await sendDiscord(blobs,dummy,440,50,`テスト(${ch}/${tg})`,u,tg);log(`✅${ch}→${tg}成功`,'TEST');ok++}catch(e){log(`❌${ch}→${tg}:${e.message}`,'ERROR');ng++}}}}log(`📊完了:成功${ok}/失敗${ng}`,'SYSTEM');alert(`完了！\n成功:${ok}\n失敗:${ng}`);document.getElementById('testModal').style.display='none'}
 
 // ============================================================
-// イベント登録
+// イベント登録（既存 + カメラ切り替え追加）
 // ============================================================
 $("startBtn").onclick=startSystem;
 $("stopBtn").onclick=stopSystem;
-$("switchCamBtn").onclick=switchCamera;
+$("switchCamBtn").onclick=switchCamera;  // ★ カメラ切り替えボタン
 $("testSendBtn").onclick=()=>{updateTestTags();document.getElementById('testModal').style.display='grid'};
 $("testModalCancelBtn").onclick=()=>document.getElementById('testModal').style.display='none';
 $("testModalSubmitBtn").onclick=execTest;
 document.getElementById('testModal').onclick=e=>{if(e.target===document.getElementById('testModal'))document.getElementById('testModal').style.display='none'};
 
 // ============================================================
-// 汎用関数
+// 汎用関数（既存）
 // ============================================================
 function uid(){return"id_"+Date.now().toString(36)+"_"+Math.random().toString(36).substr(2,5)}
 function ts(){const d=new Date();return`[${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}:${d.getHours()}:${d.getMinutes()}:${String(d.getSeconds()).padStart(2,'0')}`}
@@ -760,7 +690,7 @@ bindToggle("seqToggleBtn","seqSectionBody","seqToggleStatusText");
 bindToggle("paramsToggleBtn","paramsSectionBody","paramsToggleStatusText");
 
 // ============================================================
-// Hz検査
+// Hz検査（既存）
 // ============================================================
 $("execHzBtn").onclick=()=>{if(running)stopSystem();$("mainApp").style.display="none";const root=document.createElement("div");root.id="hz2-root";root.innerHTML=`<div id="info-container"><button id="hz2-back-btn" class="back-btn">⬅戻る</button><div id="hz2-display-area"><div>CURRENT FREQUENCY</div><span id="hz2-hz-val" class="hz-display">0</span><span class="hz-unit">Hz</span><span id="hz2-pause-badge" class="pause-badge">PAUSED</span></div><span class="pause-hint">(クリック/Spaceで一時停止)</span></div><div id="log-container"><div id="log-header" class="log-header"><span class="log-header-title">FREQUENCY LOGS</span><div class="log-controls"><button id="clear-log-btn" class="action-btn">クリア</button><button id="toggle-log-btn" class="action-btn">━</button></div></div><div class="log-body"><ul id="log-list"></ul></div></div><div id="tooltip"></div><div id="controls-container"><div class="control-group"><label>感度:<span id="threshold-val">0.0150</span><input type="range" id="threshold-slider" min="0.0001" max="0.05" step="0.0005" value="0.015"></label></div><div class="control-group"><label>HPF:<span id="filter-val">80Hz</span><input type="range" id="filter-slider" min="0" max="500" step="10" value="80"></label></div><div class="control-group"><label>最大:<span id="maxhz-val">3000Hz</span><input type="range" id="maxhz-slider" min="500" max="5000" step="100" value="3000"></label></div></div><canvas id="visualizer"></canvas>`;document.body.appendChild(root);initHz(root);log("Hz検査起動","SYSTEM")};
 function initHz(root){const c=root.querySelector('#visualizer'),ctx=c.getContext('2d'),hz=root.querySelector('#hz2-hz-val'),badge=root.querySelector('#hz2-pause-badge'),back=root.querySelector('#hz2-back-btn'),logC=root.querySelector('#log-container'),logH=root.querySelector('#log-header'),tog=root.querySelector('#toggle-log-btn'),list=root.querySelector('#log-list'),clear=root.querySelector('#clear-log-btn'),tip=root.querySelector('#tooltip'),thS=root.querySelector('#threshold-slider'),thV=root.querySelector('#threshold-val'),fS=root.querySelector('#filter-slider'),fV=root.querySelector('#filter-val'),mS=root.querySelector('#maxhz-slider'),mV=root.querySelector('#maxhz-val');let actx,anal,filter,data,history=[],paused2=false,mouseX=null,mouseY=null,drag=false,dup=false,rmsTh=0.015,maxHz=3000,cut=80,lastHz=null,dragLog=false,offX=0,offY=0,raf2=null,stream=null;function toggleP(){paused2=!paused2;badge.classList.toggle('active',paused2);if(!paused2)draw()}document.addEventListener('keydown',e=>{if(e.code==='Space'&&e.target.tagName!=='INPUT'){e.preventDefault();toggleP()}});logH.onmousedown=e=>{if(e.target.tagName==='BUTTON')return;dragLog=true;const r=logC.getBoundingClientRect();offX=e.clientX-r.left;offY=e.clientY-r.top};const mm=e=>{if(!dragLog)return;logC.style.right='auto';logC.style.left=e.clientX-offX+'px';logC.style.top=e.clientY-offY+'px'},mu=()=>{dragLog=false};window.addEventListener('mousemove',mm);window.addEventListener('mouseup',mu);tog.onclick=()=>{logC.classList.toggle('minimized');tog.textContent=logC.classList.contains('minimized')?'❏':'━'};thS.oninput=e=>{rmsTh=parseFloat(e.target.value);thV.textContent=rmsTh.toFixed(4)};fS.oninput=e=>{cut=parseFloat(e.target.value);fV.textContent=cut+'Hz';if(filter)filter.frequency.value=cut};mS.oninput=e=>{maxHz=parseInt(e.target.value,10);mV.textContent=maxHz+'Hz';if(paused2)drawS()};clear.onclick=()=>{list.innerHTML='';lastHz=null};c.onmousedown=e=>{drag=true;upd(e)};c.onclick=e=>{if(e.target===c)toggleP()};c.onmousemove=e=>upd(e);window.addEventListener('mouseup',()=>{drag=false});c.onmouseleave=()=>{if(!drag){mouseX=mouseY=null;tip.style.display='none';if(paused2)drawS()}};function upd(e){const r=c.getBoundingClientRect();mouseX=e.clientX-r.left;mouseY=e.clientY-r.top;if(paused2||drag)drawS()}function resize(){c.width=window.innerWidth;c.height=window.innerHeight;if(paused2)drawS()}window.addEventListener('resize',resize);resize();async function startHz(){actx=new(window.AudioContext||window.webkitAudioContext)();stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});const src=actx.createMediaStreamSource(stream);filter=actx.createBiquadFilter();filter.type='highpass';filter.frequency.value=cut;anal=actx.createAnalyser();anal.fftSize=2048;src.connect(filter);filter.connect(anal);data=new Float32Array(anal.fftSize);draw()}startHz();back.onclick=()=>{if(raf2)cancelAnimationFrame(raf2);if(stream)stream.getTracks().forEach(t=>t.stop());if(actx)actx.close();window.removeEventListener('keydown',toggleP);window.removeEventListener('mousemove',mm);window.removeEventListener('mouseup',mu);window.removeEventListener('resize',resize);root.remove();$("mainApp").style.display="grid";log("戻りました","SYSTEM");startSystem()};function addLog(m){const li=document.createElement('li');li.textContent=`[${new Date().toTimeString().split(' ')[0]}] ${m}`;list.insertBefore(li,list.firstChild);if(list.children.length>50)list.removeChild(list.lastChild)}function drawS(){ctx.fillStyle='#0d1117';ctx.fillRect(0,0,c.width,c.height);const cy=c.height/2;ctx.strokeStyle='#30363d';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(0,cy);ctx.lineTo(c.width,cy);ctx.stroke();ctx.fillStyle='#8b949e';ctx.font='12px monospace';const step=maxHz>2000?500:200;for(let hz=step;hz<=maxHz;hz+=step){let y=cy-(hz/maxHz)*cy;ctx.strokeStyle='#21262d';ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(c.width,y);ctx.stroke()}ctx.beginPath();ctx.lineWidth=3;ctx.strokeStyle=dup?'#ff5555':'#58a6ff';for(let x=0;x<history.length;x++){const sx=c.width-x,sy=cy-(history[x]/maxHz)*cy;if(x===0)ctx.moveTo(sx,sy);else ctx.lineTo(sx,sy)}ctx.stroke();if(mouseX!==null&&history.length>0){const idx=Math.round(c.width-mouseX);if(idx>=0&&idx<history.length){const ph=history[idx],py=cy-(ph/maxHz)*cy;ctx.strokeStyle='#f2994a';ctx.lineWidth=1;ctx.setLineDash([4,4]);ctx.beginPath();ctx.moveTo(mouseX,0);ctx.lineTo(mouseX,c.height);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle='#f2994a';ctx.beginPath();ctx.arc(mouseX,py,6,0,Math.PI*2);ctx.fill();tip.style.display='block';tip.style.left=mouseX+15+'px';tip.style.top=py-30+'px';tip.innerHTML=`<div><strong>${Math.round(ph)}Hz</strong></div><div style="color:#8b949e;font-size:.75rem">${(idx*(1000/60)/1000).toFixed(1)}秒前</div>`}}}function draw(){if(paused2)return;anal.getFloatTimeDomainData(data);const current=autoCorrelate(data,actx.sampleRate);let pitch=(current!==-1&&current>0&&current<=maxHz)?current:0;hz.textContent=Math.round(pitch);history.unshift(pitch);if(history.length>c.width)history.pop();const r=Math.round(pitch);if(r>0){const cnt=history.filter(h=>Math.round(h)===r).length;if(cnt>=3){dup=true;hz.classList.add('highlight');if(lastHz!==r){addLog(`Detected:${r}Hz(${cnt}times)`);lastHz=r}}else{dup=false;hz.classList.remove('highlight');if(cnt<2)lastHz=null}}else{dup=false;hz.classList.remove('highlight');lastHz=null}drawS();raf2=requestAnimationFrame(draw)}}
@@ -770,6 +700,9 @@ function initHz(root){const c=root.querySelector('#visualizer'),ctx=c.getContext
 // ============================================================
 renderColors();renderThreads();renderRanges();renderSeqs();updateTestTags();
 console.log('Ready - パスワード: brainrot');
+
+// 事前にカメラスキャン
+setTimeout(() => { scanCameras(); }, 500);
 </script>
 </body>
 </html>
