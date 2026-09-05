@@ -185,7 +185,7 @@ button:disabled{opacity:.3;cursor:not-allowed}
   </div></section>
   <section class="panel top-title">"DiscordMessaging"</section>
   
-  <!-- ★★★ カメラ部分（完全に作り直し） ★★★ -->
+  <!-- カメラ部分 -->
   <section class="panel camera" id="cameraPanel">
     <video id="video" autoplay playsinline muted></video>
     <div class="video-loading" id="videoLoading">📷 カメラを起動中...</div>
@@ -329,6 +329,48 @@ let seqs = [
 let mainStream = null;
 let isCameraReady = false;
 
+// ★★★ 音声処理を設定（完全に作り直し） ★★★
+function setupAudio(stream) {
+    try {
+        // 既存の音声処理を完全に破棄
+        if (src) {
+            try { src.disconnect(); } catch(e) {}
+            src = null;
+        }
+        if (actx) {
+            try { actx.close(); } catch(e) {}
+            actx = null;
+        }
+        analyser = null;
+        
+        // AudioContextを新規作成
+        actx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        // 音声ソースを作成
+        src = actx.createMediaStreamSource(stream);
+        
+        // アナライザーを作成
+        analyser = actx.createAnalyser();
+        analyser.fftSize = 2048;
+        analyser.smoothingTimeConstant = 0.5;
+        
+        // 接続
+        src.connect(analyser);
+        
+        // AudioContextを再開
+        if (actx.state === 'suspended') {
+            actx.resume();
+        }
+        
+        log('✅ 音声処理設定完了', 'SYSTEM');
+        log(`📊 音声トラック数: ${stream.getAudioTracks().length}`, 'SYSTEM');
+        
+    } catch (err) {
+        log('❌ 音声処理設定エラー: ' + err.message, 'ERROR');
+        console.error('音声処理エラー:', err);
+    }
+}
+
 // カメラを起動してvideo要素に表示する関数
 async function startCamera(deviceId) {
     const video = document.getElementById('video');
@@ -342,13 +384,24 @@ async function startCamera(deviceId) {
         loading.textContent = '📷 カメラ起動中...';
         noCamera.style.display = 'none';
         
-        // 既存のストリームを停止
+        // ★★★ 既存の音声処理を完全にクリア ★★★
+        if (src) {
+            try { src.disconnect(); } catch(e) {}
+            src = null;
+        }
+        if (actx) {
+            try { await actx.close(); } catch(e) {}
+            actx = null;
+        }
+        analyser = null;
+        
+        // ★★★ 既存のストリームを停止 ★★★
         if (mainStream) {
             mainStream.getTracks().forEach(t => t.stop());
             mainStream = null;
         }
         
-        // カメラの設定
+        // カメラの設定（音声も必ず取得）
         const constraints = {
             video: {
                 deviceId: deviceId ? { exact: deviceId } : undefined,
@@ -356,7 +409,11 @@ async function startCamera(deviceId) {
                 height: { ideal: 480 },
                 facingMode: deviceId ? undefined : 'user'
             },
-            audio: true
+            audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true
+            }
         };
         
         // カメラを取得
@@ -393,9 +450,12 @@ async function startCamera(deviceId) {
         isCameraReady = true;
         log('✅ カメラ起動成功', 'SYSTEM');
         
-        // 音声処理を設定
+        // ★★★ 音声処理を設定（確実に実行） ★★★
         if (stream.getAudioTracks().length > 0) {
+            log('🎤 音声トラックを検出、音声処理を設定します', 'SYSTEM');
             setupAudio(stream);
+        } else {
+            log('⚠️ 音声トラックがありません', 'WARNING');
         }
         
         return stream;
@@ -408,32 +468,6 @@ async function startCamera(deviceId) {
         isCameraReady = false;
         log('❌ カメラ起動失敗: ' + err.message, 'ERROR');
         return null;
-    }
-}
-
-// 音声処理を設定
-function setupAudio(stream) {
-    try {
-        if (actx) {
-            try { actx.close(); } catch(e) {}
-            actx = null;
-        }
-        actx = new (window.AudioContext || window.webkitAudioContext)();
-        if (src) {
-            try { src.disconnect(); } catch(e) {}
-            src = null;
-        }
-        src = actx.createMediaStreamSource(stream);
-        if (!analyser) {
-            analyser = actx.createAnalyser();
-            analyser.fftSize = 2048;
-            analyser.smoothingTimeConstant = 0.5;
-        }
-        src.connect(analyser);
-        actx.resume();
-        log('✅ 音声処理設定完了', 'SYSTEM');
-    } catch (err) {
-        log('⚠️ 音声処理設定エラー: ' + err.message, 'WARNING');
     }
 }
 
@@ -477,7 +511,7 @@ async function scanCameras() {
 }
 
 // ============================================================
-// ★★★ システム制御（簡略化） ★★★
+// ★★★ システム制御 ★★★
 // ============================================================
 
 async function startSystem() {
@@ -563,7 +597,7 @@ function stopSystem() {
     log('⏹ システム停止', 'SYSTEM');
 }
 
-// カメラ切り替え
+// ★★★ カメラ切り替え（修正版） ★★★
 async function switchCamera() {
     if (!vDevices.length || vDevices.length < 2) {
         log('⚠️ 切り替え可能なカメラがありません', 'WARNING');
@@ -587,6 +621,14 @@ async function switchCamera() {
     
     if (stream) {
         log('✅ カメラ切替完了', 'SYSTEM');
+        // 音声処理が正常に設定されたか確認
+        if (!analyser || !actx) {
+            log('⚠️ 音声処理が未設定です。再設定します。', 'WARNING');
+            setupAudio(stream);
+        }
+        // 解析ループを再開
+        if (raf) cancelAnimationFrame(raf);
+        analyze();
     } else {
         log('❌ カメラ切替失敗', 'ERROR');
         // 元のカメラに戻す
